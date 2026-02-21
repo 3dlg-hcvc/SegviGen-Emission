@@ -3,6 +3,7 @@ import glob
 import inspect
 import json
 import os
+import re
 import sys
 from datetime import timedelta
 from copy import deepcopy
@@ -230,18 +231,52 @@ def _get_latest_ckpt(load_dir: str) -> Optional[str]:
     return max(candidates, key=os.path.getmtime)
 
 
+def _get_latest_legacy_misc_ckpt(load_dir: str) -> Optional[str]:
+    ckpt_dir = os.path.join(load_dir, "ckpts")
+    if not os.path.isdir(ckpt_dir):
+        return None
+    candidates = sorted(glob.glob(os.path.join(ckpt_dir, "misc_step*.pt")))
+    if not candidates:
+        return None
+    return max(candidates, key=os.path.getmtime)
+
+
+def _get_legacy_misc_ckpt_by_step(load_dir: str, step: str) -> Optional[str]:
+    if not step.isdigit():
+        return None
+    ckpt_dir = os.path.join(load_dir, "ckpts")
+    if not os.path.isdir(ckpt_dir):
+        return None
+    exact = os.path.join(ckpt_dir, f"misc_step{int(step):07d}.pt")
+    if os.path.exists(exact):
+        return exact
+    matches = glob.glob(os.path.join(ckpt_dir, f"misc_step*{step}*.pt"))
+    if not matches:
+        return None
+    return max(matches, key=os.path.getmtime)
+
+
+def _is_legacy_misc_ckpt(path: Optional[str]) -> bool:
+    if not path:
+        return False
+    name = os.path.basename(path)
+    return bool(path.endswith(".pt") and re.match(r"^misc_step\d+\.pt$", name))
+
+
 def resolve_ckpt_path(load_dir: str, ckpt: str) -> Optional[str]:
     if not ckpt or ckpt == "none":
         return None
     if ckpt in ("latest", "last"):
         path = os.path.join(load_dir, "ckpts", "last.ckpt")
-        return path if os.path.exists(path) else _get_latest_ckpt(load_dir)
+        if os.path.exists(path):
+            return path
+        return _get_latest_ckpt(load_dir) or _get_latest_legacy_misc_ckpt(load_dir)
     if ckpt.isdigit():
         pattern = os.path.join(load_dir, "ckpts", f"*{ckpt}*.ckpt")
         matches = glob.glob(pattern)
         if matches:
             return max(matches, key=os.path.getmtime)
-        return None
+        return _get_legacy_misc_ckpt_by_step(load_dir, ckpt)
     if os.path.exists(ckpt):
         return ckpt
     return None
@@ -297,6 +332,10 @@ def build_datamodule(cfg: Dict[str, Any], data_dir: str, trainer_args: Dict[str,
     if batch_size is None:
         raise ValueError("trainer.args.batch_size_per_gpu (or batch_size) is required.")
 
+    split_size = trainer_args.get("batch_split")
+    if split_size is not None and int(split_size) <= 1:
+        split_size = None
+
     dm = TrellisDataModule(
         dataset=dataset_cfg,
         batch_size=int(batch_size),
@@ -307,7 +346,7 @@ def build_datamodule(cfg: Dict[str, Any], data_dir: str, trainer_args: Dict[str,
         val_split_name=trainer_args.get("val_split_name"),
         val_batch_size=trainer_args.get("val_batch_size_per_gpu") or trainer_args.get("val_batch_size"),
         use_balanced_sampler=trainer_args.get("use_balanced_sampler"),
-        split_size=trainer_args.get("batch_split"),
+        split_size=split_size,
     )
     return dm
 
@@ -388,7 +427,9 @@ def build_trainer(
         precision = "bf16-mixed" if mix_dtype in ("bfloat16", "bf16") else "16-mixed"
 
     log_every_n_steps = int(trainer_args.get("wandb_log_every_steps", trainer_args.get("i_log", 50)))
-    accumulate_grad_batches = int(trainer_args.get("batch_split", 1))
+    accumulate_grad_batches = max(1, int(trainer_args.get("batch_split", 1)))
+    if dm is not None and getattr(dm, "split_size", None) is not None:
+        accumulate_grad_batches = 1
 
     limit_val_batches = trainer_args.get("limit_val_batches", 1.0)
     val_max_samples = trainer_args.get("val_max_samples")
@@ -516,11 +557,26 @@ def main():
             print(model_summary, file=fp)
 
     ckpt_path = resolve_ckpt_path(opt.load_dir, opt.ckpt)
+    resume_mode = None
+    fit_ckpt_path = None
+    if ckpt_path is not None:
+        if _is_legacy_misc_ckpt(ckpt_path):
+            resume_mode = "legacy"
+        elif ckpt_path.endswith(".ckpt"):
+            resume_mode = "lightning"
+            fit_ckpt_path = ckpt_path
+        elif ckpt_path.endswith(".pt"):
+            raise ValueError(
+                f"Unsupported .pt checkpoint path for --ckpt: {ckpt_path}. "
+                "Use legacy misc_step*.pt for resume, or set trainer.args.finetune_ckpt for per-model finetune."
+            )
     trainer = build_trainer(cfg, opt.output_dir, dm, opt.num_gpus, opt.num_nodes, opt.tryrun)
+    module._resume_mode = resume_mode
+    module._legacy_resume_path = ckpt_path if resume_mode == "legacy" else None
 
     def run_fit():
-        fit_kwargs = dict(datamodule=dm, ckpt_path=ckpt_path)
-        if ckpt_path is not None:
+        fit_kwargs = dict(datamodule=dm, ckpt_path=fit_ckpt_path)
+        if fit_ckpt_path is not None:
             fit_sig = inspect.signature(trainer.fit)
             if "weights_only" in fit_sig.parameters:
                 fit_kwargs["weights_only"] = False

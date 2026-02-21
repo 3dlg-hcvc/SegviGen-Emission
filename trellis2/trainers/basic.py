@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from contextlib import nullcontext
 import os
+import glob
+import re
 from abc import abstractmethod
 
 try:
@@ -76,6 +78,9 @@ class BasicTrainer(pl.LightningModule):
         self.training_models = self.models
 
         self._grad_clipper = None
+        self._pending_grad_clipper_state = None
+        self._finetune_applied = False
+        self._legacy_resume_applied = False
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -92,6 +97,14 @@ class BasicTrainer(pl.LightningModule):
         dm = getattr(self.trainer, "datamodule", None)
         if dm is not None:
             self._dataset = getattr(dm, "train_dataset", None)
+        resume_mode = getattr(self, "_resume_mode", None)
+        legacy_resume_path = getattr(self, "_legacy_resume_path", None)
+        if resume_mode == "legacy" and legacy_resume_path and not self._legacy_resume_applied:
+            self._load_legacy_resume_checkpoint(legacy_resume_path)
+            self._legacy_resume_applied = True
+        if resume_mode in ("legacy", "lightning"):
+            return
+        self._apply_finetune_checkpoint()
 
     def configure_optimizers(self):
         params = list(self.parameters())
@@ -130,6 +143,9 @@ class BasicTrainer(pl.LightningModule):
                 from trellis2.utils.grad_clip_utils import AdaptiveGradClipper
 
                 self._grad_clipper = AdaptiveGradClipper(**cfg_args)
+                if self._pending_grad_clipper_state is not None and hasattr(self._grad_clipper, "load_state_dict"):
+                    self._grad_clipper.load_state_dict(self._pending_grad_clipper_state)
+                    self._pending_grad_clipper_state = None
             self._grad_clipper(self.parameters())
             return
 
@@ -140,6 +156,9 @@ class BasicTrainer(pl.LightningModule):
             if clipper_cls is None:
                 raise ValueError(f"Unknown grad clipper: {name}")
             self._grad_clipper = clipper_cls(**cfg_args)
+            if self._pending_grad_clipper_state is not None and hasattr(self._grad_clipper, "load_state_dict"):
+                self._grad_clipper.load_state_dict(self._pending_grad_clipper_state)
+                self._pending_grad_clipper_state = None
         self._grad_clipper(self.parameters())
 
     def _autocast_context(self):
@@ -183,35 +202,321 @@ class BasicTrainer(pl.LightningModule):
                 rank_zero_only=is_dynamic_bin,
             )
 
-    def training_step(self, batch: Dict[str, Any], batch_idx: int):
-        with self._autocast_context():
-            terms, _ = self._extract_terms(self.training_losses(**batch))
-        x0 = batch.get("x_0")
-        if hasattr(x0, "shape"):
-            batch_size = int(x0.shape[0])
-        elif hasattr(x0, "layout"):
-            batch_size = int(len(x0.layout))
-        elif isinstance(batch, dict) and batch:
-            first = next(iter(batch.values()))
-            batch_size = int(first.shape[0]) if hasattr(first, "shape") else 1
-        else:
-            batch_size = 1
-        self._log_terms(terms, "train", batch_size=batch_size, on_step=True, on_epoch=True)
-        return terms["loss"]
+    def _is_global_zero(self) -> bool:
+        trainer = getattr(self, "trainer", None)
+        if trainer is None:
+            return True
+        return bool(getattr(trainer, "is_global_zero", True))
 
-    def validation_step(self, batch: Dict[str, Any], batch_idx: int):
-        with self._autocast_context():
-            terms, _ = self._extract_terms(self.training_losses(**batch))
+    def _warn(self, message: str) -> None:
+        if self._is_global_zero():
+            print(message)
+
+    @staticmethod
+    def _safe_torch_load(path: str, map_location: Any = "cpu"):
+        try:
+            return torch.load(path, map_location=map_location, weights_only=False)
+        except TypeError:
+            return torch.load(path, map_location=map_location)
+
+    @staticmethod
+    def _dict_looks_like_state_dict(payload: Any) -> bool:
+        if not isinstance(payload, dict) or not payload:
+            return False
+        if not all(isinstance(k, str) for k in payload.keys()):
+            return False
+        return any(torch.is_tensor(v) for v in payload.values())
+
+    @staticmethod
+    def _strip_prefix_from_state_dict(state_dict: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+        plen = len(prefix)
+        return {k[plen:]: v for k, v in state_dict.items() if isinstance(k, str) and k.startswith(prefix)}
+
+    def _extract_state_dict_for_model(self, payload: Any, model_name: str) -> Optional[Dict[str, Any]]:
+        if isinstance(payload, dict):
+            state_dict = payload.get("state_dict")
+            if isinstance(state_dict, dict):
+                extracted = self._extract_state_dict_for_model(state_dict, model_name)
+                if extracted:
+                    return extracted
+
+            models_bucket = payload.get("models")
+            if isinstance(models_bucket, dict):
+                direct = models_bucket.get(model_name)
+                if self._dict_looks_like_state_dict(direct):
+                    return dict(direct)
+
+            direct = payload.get(model_name)
+            if self._dict_looks_like_state_dict(direct):
+                return dict(direct)
+
+            if self._dict_looks_like_state_dict(payload):
+                for prefix in (f"models.{model_name}.", f"{model_name}.", f"model.{model_name}."):
+                    stripped = self._strip_prefix_from_state_dict(payload, prefix)
+                    if stripped:
+                        return stripped
+                return dict(payload)
+        return None
+
+    @staticmethod
+    def _slice_value(value: Any, start: int, end: int) -> Any:
+        if isinstance(value, dict):
+            return {k: BasicTrainer._slice_value(v, start, end) for k, v in value.items()}
+        if isinstance(value, list):
+            return value[start:end]
+        if isinstance(value, tuple):
+            return type(value)(BasicTrainer._slice_value(v, start, end) for v in value[start:end])
+        try:
+            return value[start:end]
+        except Exception:
+            return value
+
+    @staticmethod
+    def _infer_batch_size_from_dict(batch: Dict[str, Any]) -> int:
         x0 = batch.get("x_0")
         if hasattr(x0, "shape"):
-            batch_size = int(x0.shape[0])
-        elif hasattr(x0, "layout"):
-            batch_size = int(len(x0.layout))
-        elif isinstance(batch, dict) and batch:
-            first = next(iter(batch.values()))
-            batch_size = int(first.shape[0]) if hasattr(first, "shape") else 1
-        else:
-            batch_size = 1
+            return int(x0.shape[0])
+        if hasattr(x0, "layout"):
+            return int(len(x0.layout))
+        for value in batch.values():
+            if hasattr(value, "shape"):
+                return int(value.shape[0])
+            if hasattr(value, "layout"):
+                return int(len(value.layout))
+            if isinstance(value, (list, tuple)):
+                return len(value)
+        return 1
+
+    def _normalize_microbatches(self, batch: Any) -> List[Dict[str, Any]]:
+        if isinstance(batch, list):
+            out = [b for b in batch if isinstance(b, dict)]
+            if out:
+                return out
+            raise TypeError("Batch list is expected to contain dict microbatches.")
+        if not isinstance(batch, dict):
+            raise TypeError(f"Unexpected batch type: {type(batch)}")
+        if self.batch_split <= 1:
+            return [batch]
+        batch_size = self._infer_batch_size_from_dict(batch)
+        if batch_size <= 1 or batch_size % self.batch_split != 0:
+            return [batch]
+        shard = batch_size // self.batch_split
+        return [{k: self._slice_value(v, i * shard, (i + 1) * shard) for k, v in batch.items()} for i in range(self.batch_split)]
+
+    @staticmethod
+    def _aggregate_terms(terms_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        sums: Dict[str, Any] = {}
+        counts: Dict[str, Any] = {}
+
+        def merge(sum_dst: Dict[str, Any], cnt_dst: Dict[str, Any], src: Dict[str, Any]) -> None:
+            for key, value in src.items():
+                if isinstance(value, dict):
+                    child_sum = sum_dst.setdefault(key, {})
+                    child_cnt = cnt_dst.setdefault(key, {})
+                    merge(child_sum, child_cnt, value)
+                    continue
+                if not torch.is_tensor(value) and not isinstance(value, (float, int)):
+                    continue
+                if key not in sum_dst:
+                    sum_dst[key] = value.detach() if torch.is_tensor(value) else float(value)
+                    cnt_dst[key] = 1
+                else:
+                    sum_dst[key] = sum_dst[key] + (value.detach() if torch.is_tensor(value) else float(value))
+                    cnt_dst[key] = int(cnt_dst[key]) + 1
+
+        def finalize(sum_src: Dict[str, Any], cnt_src: Dict[str, Any]) -> Dict[str, Any]:
+            out: Dict[str, Any] = {}
+            for key, value in sum_src.items():
+                if isinstance(value, dict):
+                    nested = finalize(value, cnt_src.get(key, {}))
+                    if nested:
+                        out[key] = nested
+                    continue
+                denom = max(1, int(cnt_src.get(key, 1)))
+                out[key] = value / denom
+            return out
+
+        for terms in terms_list:
+            merge(sums, counts, terms)
+        return finalize(sums, counts)
+
+    def _batch_effective_size(self, batch: Any, microbatches: List[Dict[str, Any]]) -> int:
+        if isinstance(batch, dict):
+            return self._infer_batch_size_from_dict(batch)
+        if isinstance(batch, list):
+            return sum(self._infer_batch_size_from_dict(mb) for mb in microbatches)
+        return 1
+
+    def _load_weights_for_model(self, model_name: str, path: str) -> None:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Checkpoint not found for '{model_name}': {path}")
+        if os.path.basename(path).startswith("misc_step") and path.endswith(".pt"):
+            step = self._extract_step_from_legacy_path(path)
+            if step is not None:
+                candidate = os.path.join(os.path.dirname(path), f"{model_name}_step{step:07d}.pt")
+                if os.path.exists(candidate):
+                    path = candidate
+        payload = self._safe_torch_load(path, map_location="cpu")
+        model_state = self._extract_state_dict_for_model(payload, model_name)
+        if not isinstance(model_state, dict):
+            raise ValueError(f"Unable to extract state_dict for '{model_name}' from: {path}")
+        target_state = self.models[model_name].state_dict()
+        filtered = {}
+        for key, value in model_state.items():
+            if key not in target_state:
+                self._warn(f"[finetune] Warning: {model_name}.{key} not in model; skipped.")
+                continue
+            if hasattr(value, "shape") and hasattr(target_state[key], "shape") and tuple(value.shape) != tuple(target_state[key].shape):
+                self._warn(
+                    f"[finetune] Warning: {model_name}.{key} shape mismatch "
+                    f"{tuple(value.shape)} vs {tuple(target_state[key].shape)}; skipped."
+                )
+                continue
+            filtered[key] = value
+        missing, unexpected = self.models[model_name].load_state_dict(filtered, strict=False)
+        if missing:
+            self._warn(f"[finetune] {model_name}: missing keys: {len(missing)}")
+        if unexpected:
+            self._warn(f"[finetune] {model_name}: unexpected keys: {len(unexpected)}")
+
+    def _apply_finetune_checkpoint(self) -> None:
+        if self._finetune_applied:
+            return
+        finetune_ckpt = getattr(self, "finetune_ckpt", None)
+        if not isinstance(finetune_ckpt, dict) or not finetune_ckpt:
+            self._finetune_applied = True
+            return
+        self._warn("[finetune] Loading finetune checkpoints")
+        for model_name in self.models.keys():
+            ckpt_path = finetune_ckpt.get(model_name)
+            if not ckpt_path:
+                self._warn(f"[finetune] Warning: {model_name} not found in finetune_ckpt; skipped.")
+                continue
+            self._warn(f"[finetune] {model_name}: {ckpt_path}")
+            self._load_weights_for_model(model_name, ckpt_path)
+        self._finetune_applied = True
+
+    @staticmethod
+    def _extract_step_from_legacy_path(path: str) -> Optional[int]:
+        match = re.search(r"step(\d+)\.pt$", os.path.basename(path))
+        if match is None:
+            return None
+        return int(match.group(1))
+
+    def _set_trainer_global_step(self, step: int) -> None:
+        trainer = getattr(self, "trainer", None)
+        if trainer is None:
+            return
+
+        def set_attr_path(root: Any, path: str, value: int) -> None:
+            obj = root
+            parts = path.split(".")
+            for name in parts[:-1]:
+                if not hasattr(obj, name):
+                    return
+                obj = getattr(obj, name)
+            last = parts[-1]
+            if hasattr(obj, last):
+                try:
+                    setattr(obj, last, value)
+                except Exception:
+                    pass
+
+        candidates = [
+            "fit_loop.epoch_loop._batches_that_stepped",
+            "fit_loop.epoch_loop.batch_progress.total.completed",
+            "fit_loop.epoch_loop.batch_progress.current.completed",
+            "fit_loop.epoch_progress.current.completed",
+        ]
+        for path in candidates:
+            set_attr_path(trainer, path, step)
+
+    def _load_legacy_resume_checkpoint(self, misc_ckpt_path: str) -> None:
+        if not os.path.exists(misc_ckpt_path):
+            raise FileNotFoundError(f"Legacy resume checkpoint not found: {misc_ckpt_path}")
+        step = self._extract_step_from_legacy_path(misc_ckpt_path)
+        misc_ckpt = self._safe_torch_load(misc_ckpt_path, map_location="cpu")
+        if step is None:
+            step = int(misc_ckpt.get("step", 0))
+        ckpt_dir = os.path.dirname(misc_ckpt_path)
+        self._warn(f"[legacy-resume] Loading step {step} from {misc_ckpt_path}")
+
+        for model_name in self.models.keys():
+            model_ckpt_path = os.path.join(ckpt_dir, f"{model_name}_step{step:07d}.pt")
+            if not os.path.exists(model_ckpt_path):
+                candidates = sorted(glob.glob(os.path.join(ckpt_dir, f"{model_name}_step*.pt")))
+                if not candidates:
+                    raise FileNotFoundError(f"Legacy checkpoint missing model weights for '{model_name}' at step {step}")
+                model_ckpt_path = candidates[-1]
+            self._load_weights_for_model(model_name, model_ckpt_path)
+
+        trainer = getattr(self, "trainer", None)
+        if trainer is not None:
+            optimizer_state = misc_ckpt.get("optimizer")
+            if optimizer_state is not None and getattr(trainer, "optimizers", None):
+                trainer.optimizers[0].load_state_dict(optimizer_state)
+
+            scheduler_state = misc_ckpt.get("lr_scheduler")
+            if scheduler_state is not None:
+                configs = getattr(trainer, "lr_scheduler_configs", [])
+                if configs:
+                    scheduler = getattr(configs[0], "scheduler", None)
+                    if scheduler is not None:
+                        scheduler.load_state_dict(scheduler_state)
+
+            sampler_state = misc_ckpt.get("data_sampler")
+            if sampler_state is not None:
+                datamodule = getattr(trainer, "datamodule", None)
+                sampler = None
+                if datamodule is not None:
+                    sampler = getattr(datamodule, "train_sampler", None)
+                if sampler is not None and hasattr(sampler, "load_state_dict"):
+                    sampler.load_state_dict(sampler_state)
+
+            elastic_state = misc_ckpt.get("elastic_controller")
+            if elastic_state is not None:
+                for cb in getattr(trainer, "callbacks", []):
+                    if cb.__class__.__name__ != "ElasticControllerCallback":
+                        continue
+                    if getattr(cb, "controller", None) is not None:
+                        cb.controller.load_state_dict(elastic_state)
+                    else:
+                        cb._pending_state = elastic_state
+                    break
+
+            grad_clip_state = misc_ckpt.get("grad_clip")
+            if grad_clip_state is not None:
+                if self._grad_clipper is not None and hasattr(self._grad_clipper, "load_state_dict"):
+                    self._grad_clipper.load_state_dict(grad_clip_state)
+                else:
+                    self._pending_grad_clipper_state = grad_clip_state
+
+            self._set_trainer_global_step(step)
+
+    def training_step(self, batch: Any, batch_idx: int):
+        microbatches = self._normalize_microbatches(batch)
+        terms_list: List[Dict[str, Any]] = []
+        losses: List[torch.Tensor] = []
+        for mb_data in microbatches:
+            with self._autocast_context():
+                terms, _ = self._extract_terms(self.training_losses(**mb_data))
+            terms_list.append(terms)
+            losses.append(terms["loss"])
+        loss = torch.stack([l if torch.is_tensor(l) else torch.tensor(float(l), device=self.device) for l in losses]).mean()
+        terms = self._aggregate_terms(terms_list)
+        batch_size = self._batch_effective_size(batch, microbatches)
+        self._log_terms(terms, "train", batch_size=batch_size, on_step=True, on_epoch=True)
+        return loss
+
+    def validation_step(self, batch: Any, batch_idx: int):
+        microbatches = self._normalize_microbatches(batch)
+        terms_list: List[Dict[str, Any]] = []
+        for mb_data in microbatches:
+            with self._autocast_context():
+                terms, _ = self._extract_terms(self.training_losses(**mb_data))
+            terms_list.append(terms)
+        terms = self._aggregate_terms(terms_list)
+        batch_size = self._batch_effective_size(batch, microbatches)
         self._log_terms(terms, "val", batch_size=batch_size, on_step=False, on_epoch=True)
         return terms
 
