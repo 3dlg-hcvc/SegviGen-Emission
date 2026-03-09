@@ -14,6 +14,15 @@ __attributes = {
     'ImageConditionedSLatShape': 'structured_latent_shape',
     'SLatPbr': 'structured_latent_svpbr',
     'ImageConditionedSLatPbr': 'structured_latent_svpbr',
+
+    # LightGen: emission generation conditioned on geometry + material (UV space)
+    'LightGenUVEmission': 'lightgen_uv',
+    'LightGenUVEmissionLatent': 'lightgen_uv',
+    'LightGenUVFull': 'lightgen_uv',
+
+    # LightGen: emission generation in voxel space (TRELLIS.2-native, recommended)
+    'LightGenSLatEmission': 'lightgen_slat',
+    'LightGenSLatEmissionLatent': 'lightgen_slat',
 }
 
 __submodules = []
@@ -43,4 +52,6 @@ if __name__ == '__main__':
     from .structured_latent import SLat, ImageConditionedSLat
     from .structured_latent_shape import SLatShape, ImageConditionedSLatShape
     from .structured_latent_svpbr import SLatPbr, ImageConditionedSLatPbr
+    from .lightgen_uv import LightGenUVEmission, LightGenUVEmissionLatent, LightGenUVFull
+    from .lightgen_slat import LightGenSLatEmission, LightGenSLatEmissionLatent
     

@@ -111,9 +111,10 @@ class TrellisDataModule(pl.LightningDataModule):
             sampler=sampler,
         )
 
-    def val_dataloader(self) -> Optional[DataLoader]:
+    def val_dataloader(self):
         if self.val_dataset is None:
-            return None
+            # Return an empty list so Lightning 2.x treats this as "no val loaders".
+            return []
         collate = None
         if hasattr(self.val_dataset, "collate_fn"):
             collate = self.val_dataset.collate_fn

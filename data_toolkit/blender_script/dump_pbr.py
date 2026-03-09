@@ -4,6 +4,11 @@ import bpy
 import bmesh
 from mathutils import Vector, Matrix
 import numpy as np
+# Ensure third-party packages installed for Blender are on the path
+import sys as _sys, os as _os
+_blender_pkgs = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "blender_packages")
+if _os.path.isdir(_blender_pkgs) and _blender_pkgs not in _sys.path:
+    _sys.path.insert(0, _blender_pkgs)
 from PIL import Image
 import pickle
 
@@ -334,6 +339,10 @@ def main(arg):
             "alphaTexture": None,
             "metallicTexture": None,
             "roughnessTexture": None,
+            # Emission (default = no emission)
+            "emissiveColorFactor": [0.0, 0.0, 0.0],
+            "emissiveStrengthFactor": 1.0,
+            "emissiveColorTexture": None,
         }
 
         try:
@@ -410,6 +419,32 @@ def main(arg):
                     factor, image = try_extract_image_with_factor(link, 'G')
                     pack["roughnessFactor"] = factor
                     pack["roughnessTexture"] = image
+
+            # Handle emission color
+            emission_input_name = 'Emission Color' if 'Emission Color' in principled_node.inputs else 'Emission'
+            if not principled_node.inputs[emission_input_name].is_linked:
+                color_val = principled_node.inputs[emission_input_name].default_value
+                pack["emissiveColorFactor"] = list(color_val)[:3]
+            else:
+                link = principled_node.inputs[emission_input_name].links[0]
+                if link.from_node.type == 'RGB':
+                    pack["emissiveColorFactor"] = list(link.from_node.outputs[0].default_value)[:3]
+                else:
+                    try:
+                        factor, image = try_extract_image_with_factor(link, 'RGB')
+                        pack["emissiveColorFactor"] = factor
+                        pack["emissiveColorTexture"] = image
+                    except Exception:
+                        pack["emissiveColorFactor"] = [1.0, 1.0, 1.0]
+
+            # Handle emission strength (Blender 3.x+ only; clamp to [0, 1] for storage)
+            if 'Emission Strength' in principled_node.inputs:
+                if not principled_node.inputs['Emission Strength'].is_linked:
+                    pack["emissiveStrengthFactor"] = float(principled_node.inputs['Emission Strength'].default_value)
+                else:
+                    link = principled_node.inputs['Emission Strength'].links[0]
+                    if link.from_node.type == 'VALUE':
+                        pack["emissiveStrengthFactor"] = float(link.from_node.outputs[0].default_value)
 
             output['materials'].append(pack)
         except:

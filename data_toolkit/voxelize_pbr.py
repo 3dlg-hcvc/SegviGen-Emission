@@ -88,7 +88,23 @@ def _pbr_voxelize(file, metadatum, pbr_dump_root, root):
                 coord, attr = o_voxel.convert.blender_dump_to_volumetric_attr(dump, grid_size=res, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
                                                                               mip_level_offset=0, verbose=False, timing=False)
                 del attr['normal']
-                del attr['emissive']
+
+                # Save emission voxels separately (same coordinates as PBR voxels)
+                os.makedirs(os.path.join(root, f'emission_voxels_{res}'), exist_ok=True)
+                if 'emissive' in attr:
+                    emissive_attr = {'emissive': attr.pop('emissive')}
+                    o_voxel.io.write_vxz(os.path.join(root, f'emission_voxels_{res}', f'{sha256}.vxz'), coord, emissive_attr)
+                    pack[f'emission_voxelized_{res}'] = True
+                    pack[f'num_emission_voxels_{res}'] = len(coord)
+                else:
+                    # Fallback: no emissive in dump (pre-emission pipeline), write zero emission
+                    import numpy as _np
+                    emissive_attr = {'emissive': _np.zeros((len(coord), 3), dtype=_np.uint8)}
+                    o_voxel.io.write_vxz(os.path.join(root, f'emission_voxels_{res}', f'{sha256}.vxz'), coord, emissive_attr)
+                    pack[f'emission_voxelized_{res}'] = True
+                    pack[f'num_emission_voxels_{res}'] = len(coord)
+
+                # Save PBR voxels (base_color, metallic, roughness, alpha — unchanged)
                 o_voxel.io.write_vxz(os.path.join(root, f'pbr_voxels_{res}', f'{sha256}.vxz'), coord, attr)
                 pack[f'pbr_voxelized_{res}'] = True
                 pack[f'num_pbr_voxels_{res}'] = len(coord)
@@ -128,6 +144,7 @@ if __name__ == '__main__':
 
     for res in opt.resolution:
         os.makedirs(os.path.join(opt.pbr_voxel_root, f'pbr_voxels_{res}', 'new_records'), exist_ok=True)
+        os.makedirs(os.path.join(opt.pbr_voxel_root, f'emission_voxels_{res}'), exist_ok=True)
 
     # get file list
     if not os.path.exists(os.path.join(opt.root, 'metadata.csv')):
@@ -183,3 +200,9 @@ if __name__ == '__main__':
                 pbr_voxel_metadata = pbr_voxel_metadata[['sha256', f'pbr_voxelized_{res}', f'num_pbr_voxels_{res}']]
                 pbr_voxel_metadata = pbr_voxel_metadata.rename(columns={f'pbr_voxelized_{res}': 'pbr_voxelized', f'num_pbr_voxels_{res}': 'num_pbr_voxels'})
                 pbr_voxel_metadata.to_csv(os.path.join(opt.pbr_voxel_root, f'pbr_voxels_{res}', 'new_records', f'part_{opt.rank}.csv'), index=False)
+        if f'emission_voxelized_{res}' in pbr_voxelized.columns:
+            emit_metadata = pbr_voxelized[pbr_voxelized[f'emission_voxelized_{res}'] == True]
+            if len(emit_metadata) > 0:
+                emit_metadata = emit_metadata[['sha256', f'emission_voxelized_{res}', f'num_emission_voxels_{res}']]
+                emit_metadata = emit_metadata.rename(columns={f'emission_voxelized_{res}': 'emission_voxelized', f'num_emission_voxels_{res}': 'num_emission_voxels'})
+                emit_metadata.to_csv(os.path.join(opt.pbr_voxel_root, f'emission_voxels_{res}', f'part_{opt.rank}.csv'), index=False)

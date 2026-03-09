@@ -1,0 +1,81 @@
+# Emission DiT overfit on 10 samples — full parity architecture
+#
+# Uses ElasticSLatFlowModel + shape+PBR concat + DINOv3 + CFG trainer
+# Normalization stats computed from 10 samples
+#
+# Run:
+#   conda run -n trellis2 python train.py \
+#       --config configs/gen/emission_dit_10sample_overfit.yaml \
+#       --output_dir /tmp/emission_dit_10sample_overfit --ckpt none
+
+models:
+  denoiser:
+    name: ElasticSLatFlowModel
+    args:
+      resolution: 16
+      in_channels: 96
+      out_channels: 32
+      model_channels: 256
+      cond_channels: 1024
+      num_blocks: 4
+      num_heads: 4
+      mlp_ratio: 4
+      pe_mode: rope
+      share_mod: true
+      initialization: scaled
+      qk_rms_norm: true
+      qk_rms_norm_cross: true
+
+dataset:
+  name: LightGenSLatEmissionLatent
+  args:
+    data_root: /tmp/lightgen_test
+    parquet_file: /tmp/lightgen_test/df_10samples.parquet
+    emission_latent_name: emission_vae_optB_overfit
+    pbr_latent_name: tex_enc_next_dc_f16c32_fp16_256
+    shape_latent_name: shape_enc_next_dc_f16c32_fp16_256
+    thumbnail_dir: /tmp/lightgen_test/thumbnails
+    image_size: 512
+    resolution: 256
+    split: null
+    emission_normalization:
+      mean: [0.537512, -0.871122, 0.43228, -1.389229, -0.722787, 0.193243, 1.09244, 0.95527, 1.278743, 0.054935, -1.065166, 0.777629, -0.168178, 0.980232, 0.889498, -1.516895, -0.453832, -0.61696, -0.327658, 1.009401, -0.14934, -0.208345, 0.860343, 0.169175, -0.257071, -1.258874, 0.233699, 0.001252, -0.099048, 1.752042, 0.083885, 0.15115]
+      std: [0.653087, 0.558743, 0.923438, 0.963784, 0.82744, 0.985402, 0.487871, 0.624125, 0.773421, 0.69966, 0.477647, 0.710214, 1.181384, 0.691769, 0.906867, 0.787477, 0.798241, 0.631023, 0.4364, 1.081781, 0.543526, 0.42405, 0.73939, 0.703998, 0.612965, 0.584023, 0.984638, 0.671201, 0.442395, 0.769362, 0.714747, 0.621739]
+    pbr_normalization:
+      mean: [3.375665, 3.428288, 1.531353, 0.059129, 0.988242, -0.63385, 0.556706, -0.423068, -0.066475, -0.036579, -0.408831, 0.220295, 0.064344, -0.530986, -1.468565, -0.350094, -1.726752, 2.711517, 0.712479, 2.799481, -0.140686, 1.882107, -1.428382, -2.065538, 0.966991, 0.674866, 0.098693, -0.003365, 2.060131, 0.287017, -0.972509, -1.687052]
+      std: [2.943756, 2.948857, 2.924237, 2.867811, 2.91679, 2.228959, 2.505883, 2.77452, 2.733974, 2.760734, 2.318266, 3.20612, 3.06421, 2.503504, 2.861791, 3.424922, 2.357528, 2.888028, 3.425426, 2.579271, 3.29478, 2.91707, 4.058385, 2.600306, 2.841796, 2.564054, 2.465189, 2.301706, 3.253912, 2.539903, 2.792622, 2.538011]
+    shape_normalization:
+      mean: [0.794309, 0.573347, -0.460334, 0.047076, 0.49724, 0.554383, 0.766576, -1.195228, 0.359891, 1.608342, 0.037237, -1.313888, 0.593869, -1.044078, -0.997918, 0.242887, 0.263038, -2.084448, 0.864369, 0.428597, 2.566952, 1.055637, -0.412401, -0.904625, 0.445902, 1.588439, 1.403133, 0.271326, -0.552296, -2.996791, -2.156741, 1.065693]
+      std: [6.468369, 5.35851, 6.099288, 5.713219, 5.8651, 5.071249, 5.821332, 6.448538, 5.621381, 6.406865, 5.284369, 6.065502, 6.077714, 6.134836, 6.388752, 5.24665, 4.999221, 5.401788, 6.324931, 6.266978, 5.629174, 6.067082, 5.744245, 5.938446, 6.114427, 5.884433, 6.639289, 6.17115, 7.168999, 5.438874, 5.771053, 6.060901]
+
+trainer:
+  name: ImageConditionedSparseFlowMatchingCFGTrainer
+  args:
+    max_steps: 5000
+    batch_size_per_gpu: 4
+    batch_split: 1
+    optimizer:
+      name: AdamW
+      args:
+        lr: 0.0003
+        weight_decay: 0.0
+    t_schedule:
+      name: uniform
+      args: {}
+    sigma_min: 1.0e-05
+    p_uncond: 0.1
+    mix_precision_mode: amp
+    mix_precision_dtype: bfloat16
+    i_log: 50
+    i_sample: 0
+    i_save: 5000
+    skip_initial_samples: true
+    dataloader_num_workers: 0
+    use_balanced_sampler: false
+    num_sanity_val_steps: 0
+    limit_val_batches: 0
+    image_cond_model:
+      name: DinoV3FeatureExtractor
+      args:
+        model_name: facebook/dinov3-vitl16-pretrain-lvd1689m
+        image_size: 512

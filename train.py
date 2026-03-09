@@ -42,6 +42,7 @@ TRAINER_MAP = {
     "SparseStructureVaeTrainer": trellis_trainers.SparseStructureVaeTrainer,
     "ShapeVaeTrainer": trellis_trainers.ShapeVaeTrainer,
     "PbrVaeTrainer": trellis_trainers.PbrVaeTrainer,
+    "EmissionVaeTrainer": trellis_trainers.EmissionVaeTrainer,
     "FlowMatchingTrainer": trellis_trainers.FlowMatchingTrainer,
     "FlowMatchingCFGTrainer": trellis_trainers.FlowMatchingCFGTrainer,
     "TextConditionedFlowMatchingCFGTrainer": trellis_trainers.TextConditionedFlowMatchingCFGTrainer,

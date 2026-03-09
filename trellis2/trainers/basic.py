@@ -538,6 +538,8 @@ class BasicTrainer(pl.LightningModule):
     def snapshot_dataset(self, num_samples: int = 100, batch_size: int = 4):
         if self.dataset is None:
             return
+        if not hasattr(self.dataset, "visualize_sample"):
+            return
         dataloader = DataLoader(
             self.dataset,
             batch_size=batch_size,
