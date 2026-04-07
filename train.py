@@ -43,6 +43,7 @@ TRAINER_MAP = {
     "ShapeVaeTrainer": trellis_trainers.ShapeVaeTrainer,
     "PbrVaeTrainer": trellis_trainers.PbrVaeTrainer,
     "EmissionVaeTrainer": trellis_trainers.EmissionVaeTrainer,
+    "EmissionPbrFinetuneTrainer": trellis_trainers.EmissionPbrFinetuneTrainer,
     "FlowMatchingTrainer": trellis_trainers.FlowMatchingTrainer,
     "FlowMatchingCFGTrainer": trellis_trainers.FlowMatchingCFGTrainer,
     "TextConditionedFlowMatchingCFGTrainer": trellis_trainers.TextConditionedFlowMatchingCFGTrainer,

@@ -214,6 +214,9 @@ class BasicTrainer(pl.LightningModule):
 
     @staticmethod
     def _safe_torch_load(path: str, map_location: Any = "cpu"):
+        if path.endswith(".safetensors"):
+            from safetensors.torch import load_file
+            return load_file(path, device=str(map_location))
         try:
             return torch.load(path, map_location=map_location, weights_only=False)
         except TypeError:
@@ -347,9 +350,27 @@ class BasicTrainer(pl.LightningModule):
             return sum(self._infer_batch_size_from_dict(mb) for mb in microbatches)
         return 1
 
+    @staticmethod
+    def _resolve_hf_path(path: str) -> str:
+        """If path looks like a HuggingFace model path (e.g. microsoft/TRELLIS.2-4B/ckpts/name),
+        resolve it to a local file by downloading via hf_hub_download."""
+        if os.path.exists(path) or os.path.exists(path + ".safetensors"):
+            return path
+        parts = path.split("/")
+        if len(parts) >= 3 and not path.startswith("/"):
+            from huggingface_hub import hf_hub_download
+            repo_id = f"{parts[0]}/{parts[1]}"
+            model_name = "/".join(parts[2:])
+            for ext in [".safetensors", ".pt", ".bin"]:
+                try:
+                    return hf_hub_download(repo_id, f"{model_name}{ext}")
+                except Exception:
+                    continue
+        raise FileNotFoundError(f"Cannot resolve checkpoint path: {path}")
+
     def _load_weights_for_model(self, model_name: str, path: str) -> None:
         if not os.path.exists(path):
-            raise FileNotFoundError(f"Checkpoint not found for '{model_name}': {path}")
+            path = self._resolve_hf_path(path)
         if os.path.basename(path).startswith("misc_step") and path.endswith(".pt"):
             step = self._extract_step_from_legacy_path(path)
             if step is not None:
@@ -506,6 +527,13 @@ class BasicTrainer(pl.LightningModule):
         terms = self._aggregate_terms(terms_list)
         batch_size = self._batch_effective_size(batch, microbatches)
         self._log_terms(terms, "train", batch_size=batch_size, on_step=True, on_epoch=True)
+        # Log current learning rate
+        opts = self.optimizers()
+        if opts is not None:
+            opt = opts[0] if isinstance(opts, (list, tuple)) else opts
+            lr = opt.param_groups[0]["lr"]
+            self.log("train/lr", lr, on_step=True, on_epoch=False,
+                     prog_bar=False, batch_size=batch_size, sync_dist=False)
         return loss
 
     def validation_step(self, batch: Any, batch_idx: int):
