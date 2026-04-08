@@ -37,6 +37,13 @@ python train.py --config <CONFIG> --output_dir <DIR> --tryrun
 python train.py --config <CONFIG> --output_dir <DIR> --num_gpus 4 --num_nodes 2 --node_rank 0
 ```
 
+## Data Paths
+
+- **Local data root:** `/local-scratch/localhome/dya78/lightgen_test` — this is where the 10-sample dataset lives (parquet, emission voxels, PBR voxels, etc.). Training configs on the cluster may reference `/localscratch/dya78/lightgen_test` (no `home` segment) — always use the local path when running locally.
+- **Visualization scripts:** `vis/` — all visualization scripts live here. Use these as templates for new visualizations.
+- **Visualization output:** `visualizations/` — generated HTML/PNG files go here.
+- **Web publishing:** copy HTML visualizations to `/project/3dlg-hcvc/lightgen/www/` for browser access.
+
 ## Data Preparation Pipeline
 
 Run in order before training:

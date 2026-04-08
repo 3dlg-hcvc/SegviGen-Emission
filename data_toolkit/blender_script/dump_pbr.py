@@ -225,31 +225,33 @@ def try_extract_image(link, expected_channel='RGB'):
     assert expected_channel in ['RGB', 'R', 'G', 'B', 'A'], "Unsupported channel"
 
     if expected_channel == 'RGB':
-        assert link.from_node.type == 'TEX_IMAGE', "Material is not supported"
+        if link.from_node.type != 'TEX_IMAGE':
+            # Non-texture source (e.g. Color Attribute, vertex colors) — no image to extract
+            return None
         assert link.from_socket.name == 'Color', "Material is not supported"
         tex_node = link.from_node
         return extract_image(tex_node, [0, 1, 2])
 
     if expected_channel in ['R', 'G', 'B']:
-        socket_name = {
-            'R': 'Red',
-            'G': 'Green',
-            'B': 'Blue',
-        }[expected_channel]
-        assert link.from_node.type == 'SEPARATE_COLOR' and link.from_node.mode == 'RGB', \
-            f"Material is not supported, {link.from_node.type}, {link.from_node.mode}"
-        assert link.from_socket.name == socket_name, "Material is not supported"
-        sep_node = link.from_node
-        assert sep_node.inputs[0].is_linked and sep_node.inputs[0].links[0].from_node.type == 'TEX_IMAGE', \
-            "Material is not supported"
-        assert sep_node.inputs[0].links[0].from_socket.name == 'Color', "Material is not supported"
-        tex_node = sep_node.inputs[0].links[0].from_node
-        channel_index = {
-            'R': 0,
-            'G': 1,
-            'B': 2,
-        }[expected_channel]
-        return extract_image(tex_node, channel_index)
+        channel_index = {'R': 0, 'G': 1, 'B': 2}[expected_channel]
+
+        # Case 1: TEX_IMAGE → SEPARATE_COLOR → socket (standard glTF packed texture)
+        if link.from_node.type == 'SEPARATE_COLOR':
+            sep_node = link.from_node
+            socket_name = {'R': 'Red', 'G': 'Green', 'B': 'Blue'}[expected_channel]
+            assert link.from_socket.name == socket_name, "Material is not supported"
+            assert sep_node.inputs[0].is_linked and sep_node.inputs[0].links[0].from_node.type == 'TEX_IMAGE', \
+                "Material is not supported"
+            assert sep_node.inputs[0].links[0].from_socket.name == 'Color', "Material is not supported"
+            tex_node = sep_node.inputs[0].links[0].from_node
+            return extract_image(tex_node, channel_index)
+
+        # Case 2: TEX_IMAGE → scalar input directly (grayscale or single-channel texture)
+        if link.from_node.type == 'TEX_IMAGE':
+            tex_node = link.from_node
+            return extract_image(tex_node, channel_index)
+
+        assert False, f"Material is not supported, node type: {link.from_node.type}"
 
     if expected_channel == 'A':
         assert link.from_node.type == 'TEX_IMAGE', "Material is not supported"
@@ -275,13 +277,13 @@ def try_extract_factor(link, mode='color'):
             assert mix_node.data_type == 'RGBA' and mix_node.blend_type == 'MULTIPLY', f"Material is not supported, {mix_node.data_type}, {mix_node.blend_type}"
             assert not mix_node.inputs['Factor'].is_linked and mix_node.inputs['Factor'].default_value == 1.0, \
                 "Material is not supported"
-            if mix_node.inputs['A'].is_linked:
-                assert not mix_node.inputs['B'].is_linked, "Material is not supported"
+            if mix_node.inputs['A'].is_linked and not mix_node.inputs['B'].is_linked:
                 return (list(mix_node.inputs['B'].default_value)[:3], mix_node.inputs['A'].links[0])
-            else:
-                assert not mix_node.inputs['A'].is_linked, "Material is not supported"
-                assert mix_node.inputs['B'].is_linked, "Material is not supported"
+            elif mix_node.inputs['B'].is_linked and not mix_node.inputs['A'].is_linked:
                 return (list(mix_node.inputs['A'].default_value)[:3], mix_node.inputs['B'].links[0])
+            elif mix_node.inputs['A'].is_linked and mix_node.inputs['B'].is_linked:
+                # Both linked (e.g. vertex colors multiplied together) — pass through A
+                return ([1.0, 1.0, 1.0], mix_node.inputs['A'].links[0])
         return ([1.0, 1.0, 1.0], link)
 
     if mode =='scalar':
