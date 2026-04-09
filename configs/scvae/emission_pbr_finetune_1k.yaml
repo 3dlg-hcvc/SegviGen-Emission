@@ -103,7 +103,7 @@ trainer:
   name: EmissionPbrFinetuneTrainer
   args:
     max_steps: 20000
-    batch_size_per_gpu: 4
+    batch_size_per_gpu: 32
     batch_split: 1
     optimizer:
       name: AdamW

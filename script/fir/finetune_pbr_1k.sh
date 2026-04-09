@@ -6,8 +6,8 @@
 
 CONFIG="configs/scvae/emission_pbr_finetune_1k.yaml"
 NAME="emission_pbr_ft_1k"
-OUTPUT_DIR="/scratch/dya78/trellis2_outputs/emission_pbr_finetune_1k"
-REPO_URL="git@github.com:dongchen-yang/TRELLIS.2-lightning.git"
+OUTPUT_DIR="/scratch/dya78/TRELLIS.2-lightning/outputs/emission_pbr_finetune_1k"
+REPO_URL="git@github.com:3dlg-hcvc/TRELLIS.2-lightning.git"
 BRANCH="lightgen"
 
 echo "Submitting job: ${NAME}"
@@ -59,21 +59,20 @@ module load arrow/22.0.0
 module load sparsehash
 
 # Activate trellis2 conda env
-source /scratch/dya78/lightgen/env/bin/activate
-conda activate trellis2
+source /scratch/dya78/TRELLIS.2-lightning/env/bin/activate
 
 # Clone repo to fast local SSD
-cd \$SLURM_TMPDIR
+cd $SLURM_TMPDIR
 git clone ${REPO_URL} -b ${BRANCH} --recursive
 cd TRELLIS.2-lightning/
 
 # Unpack voxel data to local SSD
 bash script/fir/unpack_1k_data.sh
 
-DATA_ROOT="\${SLURM_TMPDIR}/lightgen_1k"
+DATA_ROOT=${SLURM_TMPDIR}/TRELLIS.2-lightning/lightgen_1k
 
 echo ""
-echo "Data root: \${DATA_ROOT}"
+echo "Data root: ${DATA_ROOT}"
 echo "Output dir: ${OUTPUT_DIR}"
 echo ""
 
@@ -82,10 +81,9 @@ python train.py \
     --config ${CONFIG} \
     --output_dir ${OUTPUT_DIR} \
     --ckpt last \
-    --override \
-        dataset.args.data_root=\${DATA_ROOT} \
-        dataset.args.parquet_file=\${DATA_ROOT}/df_SomgProc_emission_filtered.parquet \
-        dataset.args.split_json=\${DATA_ROOT}/data_splits_emission_filtered.json &
+    --override dataset.args.data_root=${DATA_ROOT} \
+    --override dataset.args.parquet_file=${DATA_ROOT}/df_SomgProc_emission_filtered.parquet \
+    --override dataset.args.split_json=${DATA_ROOT}/data_splits_emission_filtered.json &
 TRAIN_PID=\$!
 wait \$TRAIN_PID
 EXIT_CODE=\$?
