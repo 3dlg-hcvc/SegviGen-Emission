@@ -98,6 +98,7 @@ python train.py \\
     --override dataset.args.data_root=${DATA_ROOT} \\
     --override dataset.args.parquet_file=${DATA_ROOT}/df_10samples.parquet \\
     --override dataset.args.split_json=${DATA_ROOT}/data_splits_10sample_as1k.json \\
+    --override trainer.args.val_split_file=${DATA_ROOT}/data_splits_10sample_as1k.json \\
     ${WORKERS_OVERRIDE} \\
     ${STEPS_OVERRIDE}
 
