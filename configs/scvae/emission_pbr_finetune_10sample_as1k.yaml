@@ -104,7 +104,7 @@ trainer:
   name: EmissionPbrFinetuneTrainer
   args:
     max_steps: 20000
-    batch_size_per_gpu: 32
+    batch_size_per_gpu: 12
     batch_split: 1
     optimizer:
       name: AdamW
@@ -131,8 +131,11 @@ trainer:
     i_save: 2000
     dataloader_num_workers: 4
     use_balanced_sampler: false
+    val_split_file: /local-scratch/localhome/dya78/lightgen_test/data_splits_10sample_as1k.json
+    val_split_name: val
+    val_batch_size_per_gpu: 12
+    val_every_epochs: 1
     num_sanity_val_steps: 0
-    limit_val_batches: 0
     wandb_enable: true
     wandb_project: emission-vae-1k
     wandb_name: pbr-finetune-10sample-as1k

@@ -503,6 +503,50 @@ class LightGenSLatEmissionLatent(Dataset):
             print(f"[LightGenSLatEmissionLatent] Error loading {sha256}: {exc}")
             raise
 
+    @torch.no_grad()
+    def visualize_sample(self, sample: dict) -> dict:
+        """Max-projection visualization of emission latent channels."""
+        x_0 = sample["x_0"]  # SparseTensor [N, C]
+        res = self.resolution // 16  # latent resolution
+
+        def _max_proj(sp_tensor: SparseTensor, channels: slice) -> torch.Tensor:
+            """Render a batch of max-projection images (B, 3, H, W)."""
+            images = []
+            for b in range(sp_tensor.shape[0]):
+                mask = sp_tensor.coords[:, 0] == b
+                coords = sp_tensor.coords[mask, 1:]  # [M, 3]
+                feats = sp_tensor.feats[mask, channels]  # [M, C']
+                C = feats.shape[-1]
+                if C >= 3:
+                    rgb = feats[:, :3]
+                else:
+                    rgb = torch.zeros(feats.shape[0], 3, device=feats.device)
+                    rgb[:, :C] = feats
+                lo, hi = rgb.min(), rgb.max()
+                if hi - lo > 1e-6:
+                    rgb = (rgb - lo) / (hi - lo)
+                else:
+                    rgb = rgb * 0 + 0.5
+                img = torch.zeros(res, res, 3, device=feats.device)
+                depth = torch.full((res, res), -1.0, device=feats.device)
+                mag = rgb.norm(dim=-1)
+                c = coords.long()
+                for i in range(c.shape[0]):
+                    y, x = c[i, 1].item(), c[i, 0].item()
+                    if 0 <= y < res and 0 <= x < res and mag[i] > depth[y, x]:
+                        depth[y, x] = mag[i]
+                        img[y, x] = rgb[i]
+                images.append(img.permute(2, 0, 1))  # [3, H, W]
+            return torch.stack(images)  # [B, 3, H, W]
+
+        vis = {}
+        vis["emission_latent"] = _max_proj(x_0, slice(0, 3))
+        if "concat_cond" in sample:
+            vis["cond_latent"] = _max_proj(sample["concat_cond"], slice(0, 3))
+        if "cond" in sample and sample["cond"].ndim == 4:
+            vis["image_cond"] = sample["cond"]  # [B, 3, H, W]
+        return vis
+
     @staticmethod
     def collate_fn(batch: List[Dict], split_size: Optional[int] = None):
         return _sparse_collate(batch, split_size)

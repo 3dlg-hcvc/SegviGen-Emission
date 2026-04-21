@@ -28,17 +28,17 @@ from torchvision import transforms
 
 torch.set_grad_enabled(False)
 
-DATA_ROOT = "/tmp/lightgen_test"
-DIT_CKPT  = "/tmp/emission_dit_10sample_overfit/ckpts/last.ckpt"
-DIT_CFG   = "/tmp/emission_dit_10sample_overfit/config.yaml"
-EMIT_VAE_CKPT = "/tmp/emission_vae_optB_overfit/ckpts/stepstep=0001000.ckpt"
-EMIT_VAE_CFG  = "/tmp/emission_vae_optB_overfit/config.yaml"
+DATA_ROOT = "/local-scratch/localhome/dya78/lightgen_test"
+DIT_CKPT  = "/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/outputs/emission_dit_10sample_overfit/ckpts/last.ckpt"
+DIT_CFG   = "/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/outputs/emission_dit_10sample_overfit/config.yaml"
+EMIT_VAE_CKPT = "/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/outputs/emission_vae_10sample_overfit/ckpts/last.ckpt"
+EMIT_VAE_CFG  = "/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/outputs/emission_vae_10sample_overfit/config.yaml"
 OUT_PNG   = os.path.join(os.path.dirname(__file__), "..", "emission_dit_10sample_test.png")
 device = "cuda"
 
 import pandas as pd
-df = pd.read_parquet('/localhome/dya78/code/lightgen/data/baked_uv_local_subset/df_SomgProc_emission_filtered.parquet')
-SAMPLES = list(df.index)[:10]
+df = pd.read_parquet(f'{DATA_ROOT}/df_10samples.parquet')
+SAMPLES = list(df["sha256"] if "sha256" in df.columns else df.index)[:10]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ for sha in SAMPLES:
     x_gt = sp.SparseTensor(gt_feats, torch.cat([bc, coords], dim=-1)).to(device)
 
     # Load latents
-    z_emit_raw  = load_latent(f"{DATA_ROOT}/emission_latents/emission_vae_optB_overfit/{sha}.npz")
+    z_emit_raw  = load_latent(f"{DATA_ROOT}/emission_latents/emission_vae_10sample_overfit/{sha}.npz")
     z_pbr_raw   = load_latent(f"{DATA_ROOT}/pbr_latents/tex_enc_next_dc_f16c32_fp16_256/{sha}.npz")
     z_shape_raw = load_latent(f"{DATA_ROOT}/shape_latents/shape_enc_next_dc_f16c32_fp16_256/{sha}.npz")
 
@@ -214,11 +214,11 @@ for i, r in enumerate(results):
     axes[i][1].set_title(f"DiT (L1={r['dit_l1']:.3f})", fontsize=7)
 
     # Per-channel latent L1
-    z_gt_feats  = load_latent(f"{DATA_ROOT}/emission_latents/emission_vae_optB_overfit/{r['sha']}.npz").feats
+    z_gt_feats  = load_latent(f"{DATA_ROOT}/emission_latents/emission_vae_10sample_overfit/{r['sha']}.npz").feats
     z_dit_feats = results[i]["dit"].feats   # decoded, not latent space — use lat_l1 from raw latents
 
     # Re-load cached emit lat for per-channel breakdown
-    z_e = np.load(f"{DATA_ROOT}/emission_latents/emission_vae_optB_overfit/{r['sha']}.npz")["feats"]
+    z_e = np.load(f"{DATA_ROOT}/emission_latents/emission_vae_10sample_overfit/{r['sha']}.npz")["feats"]
     # We stored z_dit_raw implicitly; approximate per-channel from overall lat_l1
     axes[i][2].bar(range(3), [
         (r["gt"].feats[:, ch] - r["dit"].feats[:, ch]).abs().mean().item()

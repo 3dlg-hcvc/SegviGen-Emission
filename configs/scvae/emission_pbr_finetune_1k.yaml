@@ -110,6 +110,15 @@ trainer:
       args:
         lr: 0.0001
         weight_decay: 0.0
+    ema_rate:
+    - 0.9999
+    fp16_mode: inflat_all
+    fp16_scale_growth: 0.001
+    grad_clip:
+      name: AdaptiveGradClipper
+      args:
+        max_norm: 1.0
+        clip_percentile: 95
     loss_type: l1
     lambda_kl: 1.0e-07
     emission_channels: 3
@@ -120,7 +129,6 @@ trainer:
     i_sample: 2000
     i_save: 2000
     dataloader_num_workers: 4
-    fp16_mode: null
     use_balanced_sampler: false
     num_sanity_val_steps: 0
     limit_val_batches: 0

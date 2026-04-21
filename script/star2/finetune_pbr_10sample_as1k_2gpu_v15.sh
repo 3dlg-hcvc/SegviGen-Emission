@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-BS=${BS:-64}
+BS=${BS:-12}
 BATCH_SPLIT=${BATCH_SPLIT:-1}
 WORKERS=${WORKERS:-}
 MAX_STEPS=${MAX_STEPS:-}

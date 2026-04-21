@@ -14,6 +14,7 @@
 set -euo pipefail
 
 BS=${BS:-64}
+WORKERS=${WORKERS:-}
 MAX_STEPS=${MAX_STEPS:-}
 TAG=${TAG:-bs${BS}}
 
@@ -30,6 +31,10 @@ STEPS_OVERRIDE=""
 if [[ -n "${MAX_STEPS}" ]]; then
     STEPS_OVERRIDE="--override trainer.args.max_steps=${MAX_STEPS}"
 fi
+WORKERS_OVERRIDE=""
+if [[ -n "${WORKERS}" ]]; then
+    WORKERS_OVERRIDE="--override trainer.args.dataloader_num_workers=${WORKERS}"
+fi
 
 ssh star2 "sbatch" << EOF
 #!/bin/bash
@@ -38,7 +43,7 @@ ssh star2 "sbatch" << EOF
 #SBATCH --time=5-15:00
 #SBATCH --cpus-per-task=32
 #SBATCH --nodelist=cs-venus-16
-#SBATCH --output=/localscratch/dya78/${NAME}.out
+#SBATCH --output=/project/3dlg-hcvc/lightgen/probe/${NAME}.out
 #SBATCH -J ${NAME}
 
 echo "Start: ${NAME}"
@@ -70,6 +75,7 @@ python train.py \
     --override dataset.args.data_root=${DATA_ROOT} \
     --override dataset.args.parquet_file=${DATA_ROOT}/df_10samples.parquet \
     --override dataset.args.split_json=${DATA_ROOT}/data_splits_10sample_as1k.json \
+    ${WORKERS_OVERRIDE} \
     ${STEPS_OVERRIDE}
 
 TRAIN_EXIT=\$?
