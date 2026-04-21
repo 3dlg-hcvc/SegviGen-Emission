@@ -1,8 +1,8 @@
 #!/bin/bash
-# Launch emission PBR finetune (10-sample overfit) on star2 (cs-venus-16)
+# Launch emission DiT overfit (10 samples) on star2 — fine-tuned from pretrained PBR DiT
 
-CONFIG="configs/scvae/emission_pbr_finetune_10sample.yaml"
-NAME="emission_pbr_finetune_10sample"
+CONFIG="configs/gen/emission_dit_10sample_overfit_pbrvae.yaml"
+NAME="emission_dit_10sample_overfit_pbrvae"
 
 echo "Submitting job: ${NAME} with config: ${CONFIG}"
 

@@ -410,13 +410,34 @@ def build_trainer(
 
     ckpt_dir = os.path.join(output_dir, "ckpts")
     i_save = trainer_args.get("i_save")
-    checkpoint_cb = ModelCheckpoint(
-        dirpath=ckpt_dir,
-        filename="step{step:07d}",
-        every_n_train_steps=(int(i_save) if i_save is not None else None),
-        save_last=True,
-        save_top_k=-1,
-    )
+    save_top_k_cfg = trainer_args.get("save_top_k")
+    if save_top_k_cfg is not None:
+        # Top-k validation-based checkpointing. Saves at the end of each
+        # validation epoch, keeping the K best checkpoints ranked by
+        # `monitor_metric` (default: "val/loss"). `last.ckpt` is always kept
+        # for resuming. `i_save` (step interval) is ignored in this mode.
+        monitor_metric = str(trainer_args.get("monitor_metric", "val/loss"))
+        monitor_mode = str(trainer_args.get("monitor_mode", "min")).lower()
+        if monitor_mode not in ("min", "max"):
+            raise ValueError(f"monitor_mode must be 'min' or 'max', got {monitor_mode!r}")
+        filename = "step{step:07d}-{" + monitor_metric + ":.4f}"
+        checkpoint_cb = ModelCheckpoint(
+            dirpath=ckpt_dir,
+            filename=filename,
+            monitor=monitor_metric,
+            mode=monitor_mode,
+            save_top_k=int(save_top_k_cfg),
+            save_last=True,
+            auto_insert_metric_name=False,
+        )
+    else:
+        checkpoint_cb = ModelCheckpoint(
+            dirpath=ckpt_dir,
+            filename="step{step:07d}",
+            every_n_train_steps=(int(i_save) if i_save is not None else None),
+            save_last=True,
+            save_top_k=-1,
+        )
     callbacks.append(checkpoint_cb)
 
     mix_mode = trainer_args.get("mix_precision_mode")
