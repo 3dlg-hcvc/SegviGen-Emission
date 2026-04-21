@@ -28,7 +28,7 @@ from torchvision import transforms
 
 torch.set_grad_enabled(False)
 
-DATA_ROOT = "/local-scratch/localhome/dya78/lightgen_test"
+DATA_ROOT = "data/lightgen_test"
 DIT_CKPT  = "/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/outputs/emission_dit_10sample_overfit/ckpts/last.ckpt"
 DIT_CFG   = "/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/outputs/emission_dit_10sample_overfit/config.yaml"
 EMIT_VAE_CKPT = "/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/outputs/emission_vae_10sample_overfit/ckpts/last.ckpt"

@@ -39,7 +39,7 @@ models:
 dataset:
   name: LightGenSLatEmissionLatent
   args:
-    data_root: /tmp/lightgen_test
+    data_root: data/lightgen_test
     parquet_file: /localhome/dya78/code/lightgen/data/baked_uv_local_subset/df_SomgProc_emission_filtered.parquet
     emission_latent_name: emission_vae_optB_overfit
     pbr_latent_name: tex_enc_next_dc_f16c32_fp16_256

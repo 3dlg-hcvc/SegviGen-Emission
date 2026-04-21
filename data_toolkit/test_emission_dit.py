@@ -30,7 +30,7 @@ from trellis2.trainers.flow_matching.mixins.image_conditioned import DinoV3Featu
 torch.set_grad_enabled(False)
 
 SAMPLE = "0007deb6d96c4474b80faa5aa3888760"
-DATA_ROOT = "/tmp/lightgen_test"
+DATA_ROOT = "data/lightgen_test"
 
 DIT_CKPT = "/tmp/emission_dit_full_overfit/ckpts/last.ckpt"
 DIT_CFG = "/tmp/emission_dit_full_overfit/config.yaml"

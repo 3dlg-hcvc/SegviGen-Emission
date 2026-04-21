@@ -4,7 +4,7 @@ import numpy as np
 import yaml
 
 SAMPLE = "0007deb6d96c4474b80faa5aa3888760"
-ROOT = "/tmp/lightgen_test"
+ROOT = "data/lightgen_test"
 
 result = {}
 for label, path in [

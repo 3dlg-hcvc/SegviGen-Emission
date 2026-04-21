@@ -28,7 +28,7 @@ import trellis2.modules.sparse as sp
 torch.set_grad_enabled(False)
 
 SAMPLE = "0007deb6d96c4474b80faa5aa3888760"
-DATA_ROOT = "/tmp/lightgen_test"
+DATA_ROOT = "data/lightgen_test"
 PBR_DUMP = os.path.join(DATA_ROOT, f"pbr_dumps/{SAMPLE}.pickle")
 RESOLUTION = 256
 SHAPE_LATENT_NAME = "shape_enc_next_dc_f16c32_fp16_256"

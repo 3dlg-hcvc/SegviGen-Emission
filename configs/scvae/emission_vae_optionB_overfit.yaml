@@ -89,7 +89,7 @@ models:
 dataset:
   name: LightGenSLatEmission
   args:
-    data_root: /tmp/lightgen_test
+    data_root: data/lightgen_test
     parquet_file: /localhome/dya78/code/lightgen/data/baked_uv_local_subset/df_SomgProc_emission_filtered.parquet
     resolution: 256
     split: null

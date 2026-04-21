@@ -8,7 +8,7 @@ Full encoding pipeline for 10 samples:
   5. Emission latent encoding (trained emission VAE encoder)
   6. Shape latent encoding  (pretrained shape encoder)
 
-Output root: /tmp/lightgen_test/
+Output root: data/lightgen_test/
 """
 import sys, os, types, subprocess, pickle
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -36,7 +36,7 @@ torch.set_grad_enabled(False)
 PARQUET = "/localhome/dya78/code/lightgen/data/baked_uv_local_subset/df_SomgProc_emission_filtered.parquet"
 GLB_ROOT = "/localhome/dya78/code/lightgen/data/TexVerse-1K"
 THUMB_ROOT = "/localhome/dya78/code/lightgen/data/TexVerse/thumbnails/thumbnails_batch"
-OUT_ROOT = "/tmp/lightgen_test"
+OUT_ROOT = "data/lightgen_test"
 RESOLUTION = 256
 N_SAMPLES = 10
 

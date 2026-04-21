@@ -29,7 +29,7 @@ from trellis2.trainers.builders import build_models
 import trellis2.modules.sparse as sp
 
 CKPT_DIR = os.path.join(os.path.dirname(__file__), "..", "outputs", "emission_pbr_finetune_10sample")
-DATA_ROOT = "/local-scratch/localhome/dya78/lightgen_test"
+DATA_ROOT = "data/lightgen_test"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Padding values matching EmissionPbrFinetuneTrainer

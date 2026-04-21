@@ -12,7 +12,7 @@ Usage:
 
 Optional flags:
     --sample_id UUID    Use a specific sample UUID (default: first train sample)
-    --out_dir PATH      Output directory (default: /tmp/lightgen_test)
+    --out_dir PATH      Output directory (default: data/lightgen_test)
     --blender PATH      Path to Blender binary
     --resolution INT    Voxel grid resolution (default: 256)
     --no_compare        Skip comparison with UV-baked data
@@ -249,7 +249,7 @@ def compare_uv(uuid, row):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sample_id",  default=None)
-    parser.add_argument("--out_dir",    default="/tmp/lightgen_test")
+    parser.add_argument("--out_dir",    default="data/lightgen_test")
     parser.add_argument("--blender",    default=BLENDER_BIN)
     parser.add_argument("--resolution", default=256, type=int)
     parser.add_argument("--no_compare", action="store_true")

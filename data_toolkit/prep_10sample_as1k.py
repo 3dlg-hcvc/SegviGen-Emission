@@ -20,46 +20,22 @@ no oversampling is needed there. With train==val (same 10 samples) we get a
 clean "did the model memorize?" signal — val/loss should track train/loss and
 approach zero as overfitting succeeds.
 
-Paths are configurable via env vars so the script works both locally and on
-the cluster (mount points differ: /local-scratch/localhome/dya78 vs
-/localscratch/dya78). By default we auto-detect whichever mount exists:
+Paths are repo-relative by default (data/lightgen_test/) so the same script
+works on every host without modification — just sync the data/ directory.
 
-  Local workstation: /local-scratch/localhome/dya78/lightgen_test
-  Cluster (venus):   /localscratch/dya78/lightgen_test
-
-Override explicitly:
-    TEST_ROOT=/path/to/lightgen_test python data_toolkit/prep_10sample_as1k.py
-    TRAIN_SIZE=240 python data_toolkit/prep_10sample_as1k.py
+Override the data root via env var if it lives elsewhere:
+    TEST_ROOT=/some/other/path python data_toolkit/prep_10sample_as1k.py
+    TRAIN_SIZE=240            python data_toolkit/prep_10sample_as1k.py
 """
 import json
 import os
 import pandas as pd
 
-_DEFAULT_TEST_ROOTS = [
-    "/local-scratch/localhome/dya78/lightgen_test",
-    "/localscratch/dya78/lightgen_test",
-]
-
-
-def _detect_test_root() -> str:
-    env = os.environ.get("TEST_ROOT")
-    if env:
-        return env
-    for cand in _DEFAULT_TEST_ROOTS:
-        if os.path.isdir(cand):
-            return cand
-    raise FileNotFoundError(
-        "Could not find lightgen_test data root. Tried: "
-        + ", ".join(_DEFAULT_TEST_ROOTS)
-        + ". Set TEST_ROOT=/path/to/lightgen_test to override."
-    )
-
-
-TEST_ROOT   = _detect_test_root()
-PARQUET     = f"{TEST_ROOT}/df_10samples.parquet"
-OUT_JSON    = f"{TEST_ROOT}/data_splits_10sample_as1k.json"
-# 120 = 10 batches/epoch at BS=12 per GPU (the current scaling target).
-TRAIN_SIZE  = int(os.environ.get("TRAIN_SIZE", 120))
+REPO_ROOT  = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+TEST_ROOT  = os.environ.get("TEST_ROOT", os.path.join(REPO_ROOT, "data", "lightgen_test"))
+PARQUET    = f"{TEST_ROOT}/df_10samples.parquet"
+OUT_JSON   = f"{TEST_ROOT}/data_splits_10sample_as1k.json"
+TRAIN_SIZE = int(os.environ.get("TRAIN_SIZE", 120))
 print(f"TEST_ROOT: {TEST_ROOT}")
 
 df = pd.read_parquet(PARQUET)

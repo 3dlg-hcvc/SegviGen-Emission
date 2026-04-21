@@ -27,7 +27,7 @@ from trellis2.trainers.builders import build_models
 torch.set_grad_enabled(False)
 
 SAMPLE = "0007deb6d96c4474b80faa5aa3888760"
-DATA_ROOT = "/tmp/lightgen_test"
+DATA_ROOT = "data/lightgen_test"
 EMISSION_CKPT = "/tmp/emission_vae_optB_overfit/ckpts/stepstep=0001000.ckpt"
 EMISSION_CFG = "/tmp/emission_vae_optB_overfit/config.yaml"
 OUT_PNG = os.path.join(os.path.dirname(__file__), "..", "vae_channel_vis.png")

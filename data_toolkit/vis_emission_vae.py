@@ -25,7 +25,7 @@ import o_voxel
 # ── load the single training sample ──────────────────────────────────────────
 SAMPLE = "0007deb6d96c4474b80faa5aa3888760"
 coords, attr = o_voxel.io.read_vxz(
-    f"/tmp/lightgen_test/emission_voxels_256/{SAMPLE}.vxz", num_threads=4
+    f"data/lightgen_test/emission_voxels_256/{SAMPLE}.vxz", num_threads=4
 )
 feats = attr["emissive"].float() / 255.0 * 2.0 - 1.0  # [N,3] in [-1,1]
 

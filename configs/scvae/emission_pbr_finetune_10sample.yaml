@@ -87,8 +87,8 @@ models:
 dataset:
   name: LightGenSLatEmission
   args:
-    data_root: /localscratch/dya78/lightgen_test
-    parquet_file: /localscratch/dya78/lightgen_test/df_10samples.parquet
+    data_root: data/lightgen_test
+    parquet_file: data/lightgen_test/df_10samples.parquet
     resolution: 256
     split: null
     split_indices: null

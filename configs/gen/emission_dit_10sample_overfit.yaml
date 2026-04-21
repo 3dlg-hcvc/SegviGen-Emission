@@ -30,12 +30,12 @@ models:
 dataset:
   name: LightGenSLatEmissionLatent
   args:
-    data_root: /localscratch/dya78/lightgen_test
-    parquet_file: /localscratch/dya78/lightgen_test/df_10samples.parquet
+    data_root: data/lightgen_test
+    parquet_file: data/lightgen_test/df_10samples.parquet
     emission_latent_name: emission_vae_10sample_overfit
     pbr_latent_name: tex_enc_next_dc_f16c32_fp16_256
     shape_latent_name: shape_enc_next_dc_f16c32_fp16_256
-    thumbnail_dir: /localscratch/dya78/lightgen_test/thumbnails
+    thumbnail_dir: data/lightgen_test/thumbnails
     image_size: 512
     resolution: 256
     split: null

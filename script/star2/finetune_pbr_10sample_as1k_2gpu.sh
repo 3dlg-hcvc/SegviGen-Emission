@@ -20,7 +20,7 @@ TAG=${TAG:-bs${BS}}
 
 CONFIG="configs/scvae/emission_pbr_finetune_10sample_as1k.yaml"
 NAME="emission_pbr_ft_10s_as1k_${TAG}"
-DATA_ROOT="/localscratch/dya78/lightgen_test"
+DATA_ROOT="data/lightgen_test"
 
 echo "Submitting job: ${NAME}"
 echo "  config: ${CONFIG}"

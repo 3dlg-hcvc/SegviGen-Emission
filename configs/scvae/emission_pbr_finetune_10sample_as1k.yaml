@@ -89,11 +89,11 @@ models:
 dataset:
   name: LightGenSLatEmission
   args:
-    data_root: /local-scratch/localhome/dya78/lightgen_test
-    parquet_file: /local-scratch/localhome/dya78/lightgen_test/df_10samples.parquet
+    data_root: data/lightgen_test
+    parquet_file: data/lightgen_test/df_10samples.parquet
     resolution: 256
     split: train
-    split_json: /local-scratch/localhome/dya78/lightgen_test/data_splits_10sample_as1k.json
+    split_json: data/lightgen_test/data_splits_10sample_as1k.json
     pbr_attrs:
     - base_color
     - metallic
@@ -131,7 +131,7 @@ trainer:
     i_save: 2000
     dataloader_num_workers: 4
     use_balanced_sampler: false
-    val_split_file: /local-scratch/localhome/dya78/lightgen_test/data_splits_10sample_as1k.json
+    val_split_file: data/lightgen_test/data_splits_10sample_as1k.json
     val_split_name: val
     val_batch_size_per_gpu: 12
     val_every_epochs: 1

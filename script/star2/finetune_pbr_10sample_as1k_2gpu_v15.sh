@@ -27,8 +27,13 @@ fi
 
 CONFIG="configs/scvae/emission_pbr_finetune_10sample_as1k.yaml"
 NAME="emission_pbr_ft_10s_as1k_v15_${TAG}"
-DATA_ROOT="/localscratch/dya78/lightgen_test"
 ENV_PREFIX="/localscratch/dya78/miniconda3/envs/trellis2"
+
+# NOTE: dataset paths come from the config as repo-relative paths
+# (data/lightgen_test/...). The data lives as real files inside the repo on
+# every host. Sync the data dir to the cluster once (or whenever it changes):
+#   rsync -av --partial data/lightgen_test/ \
+#       star2:/localscratch/dya78/TRELLIS.2-lightning/data/lightgen_test/
 
 echo "Submitting job: ${NAME}"
 echo "  config: ${CONFIG}"
@@ -95,10 +100,6 @@ python train.py \\
     --ckpt last \\
     --override trainer.args.batch_size_per_gpu=${BS} \\
     --override trainer.args.batch_split=${BATCH_SPLIT} \\
-    --override dataset.args.data_root=${DATA_ROOT} \\
-    --override dataset.args.parquet_file=${DATA_ROOT}/df_10samples.parquet \\
-    --override dataset.args.split_json=${DATA_ROOT}/data_splits_10sample_as1k.json \\
-    --override trainer.args.val_split_file=${DATA_ROOT}/data_splits_10sample_as1k.json \\
     ${WORKERS_OVERRIDE} \\
     ${STEPS_OVERRIDE}
 
