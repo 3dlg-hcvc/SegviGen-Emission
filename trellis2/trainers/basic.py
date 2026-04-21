@@ -548,6 +548,30 @@ class BasicTrainer(pl.LightningModule):
         self._log_terms(terms, "val", batch_size=batch_size, on_step=False, on_epoch=True)
         return terms
 
+    def on_validation_epoch_end(self) -> None:
+        if not self._is_global_zero():
+            return
+        trainer = getattr(self, "trainer", None)
+        if trainer is None:
+            return
+        metrics = getattr(trainer, "callback_metrics", {}) or {}
+        val_items = []
+        for key in sorted(metrics.keys()):
+            if not str(key).startswith("val/"):
+                continue
+            value = metrics[key]
+            try:
+                value = float(value.item()) if torch.is_tensor(value) else float(value)
+            except Exception:
+                continue
+            val_items.append((str(key), value))
+        if not val_items:
+            return
+        step = int(getattr(trainer, "global_step", 0))
+        epoch = int(getattr(trainer, "current_epoch", 0))
+        formatted = "  ".join(f"{k}={v:.4f}" for k, v in val_items)
+        print(f"[val] step={step}  epoch={epoch}  {formatted}", flush=True)
+
     @torch.no_grad()
     def visualize_sample(self, sample):
         if self.dataset is not None and hasattr(self.dataset, "visualize_sample"):
