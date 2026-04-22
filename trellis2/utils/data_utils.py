@@ -142,12 +142,20 @@ class ResumableSampler(Sampler):
     def __len__(self) -> int:
         return self.num_samples
 
+    def set_epoch(self, epoch: int) -> None:
+        # Lightning's fit loop calls this on every train epoch (only when the
+        # sampler exposes a callable `set_epoch`). Without it, ``self.epoch``
+        # stayed at 0 forever and every epoch re-shuffled with seed 0 — i.e.
+        # the same 64-of-120 subset got trained on every epoch.
+        self.epoch = int(epoch)
+        self.idx = 0
+
     def state_dict(self) -> dict[str, int]:
         return {
             'epoch': self.epoch,
             'idx': self.idx,
         }
-        
+
     def load_state_dict(self, state_dict):
         self.epoch = state_dict['epoch']
         self.idx = state_dict['idx']
