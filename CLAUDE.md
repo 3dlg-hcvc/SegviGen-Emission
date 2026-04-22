@@ -86,6 +86,38 @@ SBATCH wrappers live under `script/star2/<task>.sh` — one script per experimen
 
 Naming convention: `script/star2/<task>.sh` ↔ job name / output dir `<task>[_<TAG>]` ↔ status report `reports/<task>_status.md` (see existing `reports/*.md` for templates). When adding a new launch script, copy the closest existing one under `script/star2/` rather than writing from scratch.
 
+#### Interactive debug allocation (probe before sbatch)
+
+**Decision rule:** any config change that could OOM or skew DDP (new batch size, sampler, dataset) gets a ~100-step interactive probe before the full sbatch. Sparse-voxel runs have rank-skewed memory and sbatch crashes burn hours of wall-clock — a probe pays for itself on the first avoided crash.
+
+Allocation flow (see the cluster-access skill for full tmux/srun rationale; keep tmux **local**, not star2-side):
+
+```bash
+# From local workstation — session name = node name
+tmux new-session -d -s cs-venus-15 \
+  'ssh star2 -t "srun --nodelist=cs-venus-15 --gres=gpu:l40s:4 \
+  --cpus-per-task=32 --mem=256G --time=8:00:00 --pty zsh -l"'
+tmux a -t cs-venus-15
+```
+
+Once attached (inside the compute-node shell):
+```bash
+cd /localscratch/dya78/TRELLIS.2-lightning && conda activate trellis2
+git pull --ff-only origin <branch>
+TRAIN_SIZE=<N> python data_toolkit/prep_10sample_as1k.py   # regen gitignored splits
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+mkdir -p log; TS=$(date +%Y%m%d-%H%M%S)
+python train.py --config configs/scvae/<cfg>.yaml --output_dir outputs/<run> \
+  --num_gpus 4 --ckpt last \
+  --override trainer.args.batch_size_per_gpu=<probe_bs> \
+  --override trainer.args.max_steps=<current_step+100> 2>&1 \
+  | tee "log/${TS}-probe_bs<probe_bs>.log"
+```
+
+Probe passes if it reaches a full val epoch without OOM and with sane `val/loss`. With e.g. BS=8 + TRAIN_SIZE=640 + `val_every_epochs=5`, 100 steps = 5 epochs = 1 val epoch — exactly right. Then commit the config change and submit the full sbatch. When done, exit the compute shell (`--pty` releases on shell exit), or `scancel <jobid>` if it's stuck, then `tmux kill-session -t cs-venus-15`.
+
+Gotcha: `nvidia-smi` via a second `srun --jobid=<id> --overlap` is scoped to the overlap step's cgroup GPU devices — that subset is what you see, *not* the parent training step's full GRES binding. Don't conclude "only 1 GPU is used" from it; the Lightning progress bar (`N/N ... it/s` where N matches `total_batches/rank × ranks`) is the authoritative DDP-across-all-ranks signal.
+
 ## Data Paths
 
 - **Data root:** `data/lightgen_test/` — repo-relative path that works on every host. The 10-sample dataset (parquet, emission voxels, PBR voxels, latents, splits) lives here as real files. The `data/` directory is gitignored. To deploy on a new host, copy/rsync `data/lightgen_test/` along with the repo (e.g. `rsync -av data/ host:/path/to/repo/data/`).
