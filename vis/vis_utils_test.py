@@ -118,6 +118,47 @@ def test_resolve_experiment_ckpt_file():
     assert h.run_dir == os.path.abspath(run_dir)
 
 
+def test_load_vae_from_handle_smoke():
+    from vis.vis_utils import (
+        load_vae_from_handle, resolve_experiment, load_samples, read_emission_voxel,
+    )
+    import torch
+    run_dir = os.path.join(os.path.dirname(__file__), "..", "outputs", "emission_vae_10sample_overfit")
+    if not (torch.cuda.is_available() and os.path.isdir(run_dir)):
+        print("skip: cuda or run_dir missing")
+        return
+    h = resolve_experiment("vae", run_dir)
+    decode = load_vae_from_handle(h)
+
+    # Resolve data_root and parquet: fall back to the repo-relative copy when
+    # the absolute path stored in the config no longer exists on this host.
+    cfg_data_root = h.data_root
+    cfg_parquet = h.config["dataset"]["args"]["parquet_file"]
+    if not os.path.isdir(cfg_data_root) or not os.path.exists(cfg_parquet):
+        cfg_data_root = DATA_ROOT
+        cfg_parquet = os.path.join(DATA_ROOT, "df_10samples.parquet")
+
+    recs = load_samples(
+        data_root=cfg_data_root,
+        resolution=h.resolution,
+        source=cfg_parquet,
+        select="first:1",
+    )
+    coords, emit, _ = read_emission_voxel(recs[0].emission_voxel_path)
+
+    # Load PBR features (needed for the two-stream trainer; harmless otherwise).
+    pbr_path = recs[0].pbr_voxel_path
+    pbr_feats = None
+    if os.path.exists(pbr_path):
+        import o_voxel
+        _, pbr_attr = o_voxel.io.read_vxz(pbr_path, num_threads=4)
+        attrs = ["base_color", "metallic", "roughness", "alpha"]
+        pbr_feats = torch.cat([pbr_attr[a].float() / 255.0 * 2.0 - 1.0 for a in attrs], dim=-1)
+
+    y = decode(coords, emit, pbr_feats)
+    assert y.shape == emit.shape, f"decoder output {y.shape} vs emit {emit.shape}"
+
+
 if __name__ == "__main__":
     test_load_samples_from_parquet_first_3()
     print("ok: parquet first:3")
@@ -135,4 +176,6 @@ if __name__ == "__main__":
     print("ok: resolve_experiment run_dir")
     test_resolve_experiment_ckpt_file()
     print("ok: resolve_experiment ckpt file")
+    test_load_vae_from_handle_smoke()
+    print("ok: load_vae_from_handle smoke")
     print("all passed")

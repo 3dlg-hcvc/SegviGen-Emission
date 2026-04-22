@@ -313,3 +313,92 @@ def resolve_experiment(label: str, path: str) -> ExperimentHandle:
         ckpt_path=ckpt_path,
         trainer_name=trainer_name,
     )
+
+
+# =============================================================================
+# VAE loading with trainer-type dispatch (EmissionVaeTrainer vs
+# EmissionPbrFinetuneTrainer) — shared by vis_3d_vae.py and vis_3d_dit.py.
+# =============================================================================
+
+# Constants mirror EmissionPbrFinetuneTrainer.{PAD_METALLIC, PAD_ROUGHNESS, PAD_ALPHA}
+# in trellis2/trainers/vae/emission_pbr_finetune.py.
+_PBR_PAD_METALLIC = -1.0
+_PBR_PAD_ROUGHNESS = 1.0
+_PBR_PAD_ALPHA = 1.0
+
+
+def _pack_emission_as_pbr(feats: torch.Tensor) -> torch.Tensor:
+    """Pack [N, 3] emission into [N, 6] PBR layout used by the finetune trainer."""
+    n = feats.shape[0]
+    pad = torch.tensor(
+        [[_PBR_PAD_METALLIC, _PBR_PAD_ROUGHNESS, _PBR_PAD_ALPHA]],
+        device=feats.device, dtype=feats.dtype,
+    ).expand(n, -1)
+    return torch.cat([feats, pad], dim=-1)
+
+
+def _load_state_into_submodule(module: torch.nn.Module, state: dict, prefix: str) -> None:
+    sub = {k.removeprefix(prefix): v for k, v in state.items() if k.startswith(prefix)}
+    module.load_state_dict(sub)
+
+
+def load_vae_from_handle(handle: "ExperimentHandle", device: str = "cuda"):
+    """Load a VAE and return a ``decode_emission(coords, emit_feats, pbr_feats_or_none)``
+    callable that produces the reconstructed [-1, 1] emission features.
+
+    Branches on ``handle.trainer_name``:
+      * ``EmissionVaeTrainer``            — two-stream concat (needs pbr_feats).
+      * ``EmissionPbrFinetuneTrainer``    — channel hijack (ignores pbr_feats).
+
+    Any other trainer raises a RuntimeError.
+    """
+    from trellis2.trainers.builders import build_models
+    import trellis2.models as trellis_models
+    from trellis2.modules import sparse as sp
+
+    models = build_models(handle.config["models"])
+    encoder, decoder = models["encoder"], models["decoder"]
+    state = torch.load(handle.ckpt_path, map_location="cpu", weights_only=False)["state_dict"]
+    _load_state_into_submodule(encoder, state, "models.encoder.")
+    _load_state_into_submodule(decoder, state, "models.decoder.")
+    encoder.to(device).eval()
+    decoder.to(device).eval()
+
+    trainer = handle.trainer_name
+    if trainer == "EmissionVaeTrainer":
+        pbr_name = handle.config["trainer"]["args"].get("pretrained_pbr_encoder")
+        pbr_enc = trellis_models.from_pretrained(pbr_name).eval().float().to(device) if pbr_name else None
+
+        @torch.no_grad()
+        def decode_emission(coords, emit_feats, pbr_feats):
+            if pbr_feats is None:
+                raise ValueError("EmissionVaeTrainer requires pbr_feats for the frozen PBR encoder")
+            bc = torch.zeros(coords.shape[0], 1, dtype=coords.dtype)
+            x_emit = sp.SparseTensor(emit_feats, torch.cat([bc, coords], dim=-1)).to(device)
+            z_emit = encoder(x_emit)
+            if pbr_enc is not None:
+                x_pbr = sp.SparseTensor(pbr_feats, torch.cat([bc, coords], dim=-1)).to(device)
+                z_pbr = pbr_enc(x_pbr)
+                z = z_emit.replace(torch.cat([z_emit.feats, z_pbr.feats], dim=-1))
+            else:
+                z = z_emit
+            return decoder(z).to("cpu").feats
+
+    elif trainer == "EmissionPbrFinetuneTrainer":
+        @torch.no_grad()
+        def decode_emission(coords, emit_feats, pbr_feats):
+            # Ignore pbr_feats — channel-hijack packs emission as base_color.
+            packed = _pack_emission_as_pbr(emit_feats)
+            bc = torch.zeros(coords.shape[0], 1, dtype=coords.dtype)
+            x = sp.SparseTensor(packed, torch.cat([bc, coords], dim=-1)).to(device)
+            z = encoder(x)
+            y = decoder(z).to("cpu").feats
+            return y[:, :3]  # first 3 channels = emission
+
+    else:
+        raise RuntimeError(
+            f"unsupported trainer {trainer!r} for VAE visualization; "
+            f"expected EmissionVaeTrainer or EmissionPbrFinetuneTrainer"
+        )
+
+    return decode_emission
