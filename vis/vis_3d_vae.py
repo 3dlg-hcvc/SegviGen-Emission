@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""Unified 3D interactive visualization for emission-VAE reconstruction.
+
+Renders GLB + GT emission + N experiment predictions per sample. All panels
+share a Three.js camera. See docs/superpowers/specs/2026-04-22-vis-3d-consolidation-design.md.
+
+Usage:
+  python vis/vis_3d_vae.py \\
+      --dataset data/lightgen_test/df_10samples.parquet \\
+      --samples all \\
+      --glb_root /localhome/dya78/code/lightgen/data/TexVerse-1K \\
+      --experiment overfit=outputs/emission_vae_10sample_overfit \\
+      --out visualizations/vae_overfit.html
+"""
+from __future__ import annotations
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import o_voxel  # noqa: E402
+import torch    # noqa: E402
+
+from vis.vis_utils import (  # noqa: E402
+    ExperimentHandle, compute_emission_l1, load_samples,
+    load_vae_from_handle, make_glb_panel_data, make_voxel_panel_data,
+    read_emission_voxel, render_html, resolve_experiment,
+)
+
+
+def _load_pbr_feats(path: str) -> torch.Tensor | None:
+    if not os.path.exists(path):
+        return None
+    attrs = ["base_color", "metallic", "roughness", "alpha"]
+    _, pbr_attr = o_voxel.io.read_vxz(path, num_threads=4)
+    return torch.cat([pbr_attr[a].float() / 255.0 * 2.0 - 1.0 for a in attrs], dim=-1)
+
+
+def _parse_experiments(specs: list[str]) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for s in specs:
+        if "=" not in s:
+            raise ValueError(f"--experiment expects name=path, got {s!r}")
+        name, path = s.split("=", 1)
+        out.append((name.strip(), path.strip()))
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dataset", required=True, help="parquet or splits JSON path")
+    ap.add_argument("--samples", default="all",
+                    help="all | first:N | split:<name> | sha:<csv>")
+    ap.add_argument("--glb_root", default=None,
+                    help="root for parquet's glb_1k_path; omit → GLB panel missing")
+    ap.add_argument("--experiment", action="append", default=[],
+                    help="repeatable name=run_dir_or_ckpt")
+    ap.add_argument("--out", required=True, help="output HTML path")
+    ap.add_argument("--threshold", type=float, default=0.005,
+                    help="min emission magnitude to render")
+    ap.add_argument("--max_points", type=int, default=80000)
+    ap.add_argument("--point_size", type=float, default=0.012)
+    args = ap.parse_args()
+
+    experiments: list[ExperimentHandle] = [
+        resolve_experiment(name, path) for name, path in _parse_experiments(args.experiment)
+    ]
+    # When there are experiments, resolution/data_root come from the first one's
+    # config. When there are none (data-only mode), infer from the parquet/default.
+    if experiments:
+        data_root = experiments[0].data_root
+        resolution = experiments[0].resolution
+    else:
+        data_root = os.path.dirname(os.path.abspath(args.dataset))
+        resolution = 256
+
+    records = load_samples(
+        data_root=data_root,
+        resolution=resolution,
+        source=args.dataset,
+        select=args.samples,
+        glb_root=args.glb_root,
+        require=("emission_voxel_path",),
+    )
+    if not records:
+        raise SystemExit(f"no samples matched --samples={args.samples!r}")
+
+    # Load VAEs once; reuse across samples.
+    decoders = [(h, load_vae_from_handle(h)) for h in experiments]
+
+    out_abs = os.path.abspath(args.out)
+    out_dir = os.path.dirname(out_abs)
+
+    samples_out: list[dict] = []
+    for rec in records:
+        coords, emit, res = read_emission_voxel(rec.emission_voxel_path)
+        pbr = _load_pbr_feats(rec.pbr_voxel_path) if any(
+            h.trainer_name == "EmissionVaeTrainer" for h in experiments
+        ) else None
+
+        panels: list[dict] = []
+        # GLB panel (or placeholder)
+        glb_rel_url = os.path.relpath(rec.glb_path, out_dir) if rec.glb_path else None
+        panels.append({
+            "kind": "glb",
+            "data": make_glb_panel_data(glb_rel_url, z_up_to_y_up=False),
+            "caption": "",
+            "label": "GLB",
+        })
+        # GT
+        panels.append({
+            "kind": "voxel",
+            "data": make_voxel_panel_data(coords, emit, res, args.threshold, args.max_points),
+            "caption": f"{coords.shape[0]:,} voxels",
+            "label": "GT emission",
+        })
+        # Experiments
+        for h, decode in decoders:
+            pred = decode(coords, emit, pbr)
+            l1 = compute_emission_l1(coords, pred, coords, emit)
+            panels.append({
+                "kind": "voxel",
+                "data": make_voxel_panel_data(coords, pred, res, args.threshold, args.max_points),
+                "caption": f"emission L1: {l1:.4f}",
+                "label": h.label,
+            })
+            torch.cuda.empty_cache()
+        samples_out.append({
+            "sha": rec.sha,
+            "info": f"{coords.shape[0]:,} voxels",
+            "panels": panels,
+        })
+
+    render_html(
+        samples=samples_out,
+        title=f"Emission VAE 3D — {len(experiments)} experiment(s)",
+        out_path=args.out,
+        point_size=args.point_size,
+    )
+
+
+if __name__ == "__main__":
+    main()
