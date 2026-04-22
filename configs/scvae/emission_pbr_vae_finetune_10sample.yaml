@@ -115,7 +115,11 @@ trainer:
   name: EmissionPbrFinetuneTrainer
   args:
     max_steps: 6000
-    batch_size_per_gpu: 16
+    # BS=16 pushed L40S VRAM to ~44/45 GB per rank even with BalancedResumable-
+    # Sampler; OOM on rotation (see CLAUDE.md "Load balancing across DDP ranks").
+    # BS=8 leaves ~50% headroom for autograd checkpoint recomputation + triton
+    # autotuner spikes on heavy-voxel-count batches.
+    batch_size_per_gpu: 8
     batch_split: 1
     optimizer:
       name: AdamW
@@ -137,8 +141,8 @@ trainer:
     finetune_ckpt:
       encoder: microsoft/TRELLIS.2-4B/ckpts/tex_enc_next_dc_f16c32_fp16
       decoder: microsoft/TRELLIS.2-4B/ckpts/tex_dec_next_dc_f16c32_fp16
-    # 4 GPU × BS=16 = global 64, TRAIN_SIZE=640 → 10 train batches/epoch with
-    # drop_last dropping zero rows (640 % 64 == 0). Default i_log=50 would flush
+    # 4 GPU × BS=8 = global 32, TRAIN_SIZE=640 → 20 train batches/epoch with
+    # drop_last dropping zero rows (640 % 32 == 0). Default i_log=50 would flush
     # 0 scalars per epoch — set to 1 so every step lands in wandb / CSV.
     # See CLAUDE.md "Logging-interval gotcha".
     i_log: 1
@@ -158,13 +162,12 @@ trainer:
     # Validation on the 10 unique samples (same data as train) — val/loss
     # should track train/loss and approach 0 as the model memorizes.
     #
-    # Frequency: 4 GPU × BS=16, TRAIN_SIZE=640 → 10 train batches/epoch.
-    # val_every_epochs=10 fires every 100 steps → ~60 top-K comparisons over
-    # the 6000-step run. EMA at 0.9999 damps residual oscillation between
-    # snapshots. Tighten to 5 if you want denser comparisons.
+    # Frequency: 4 GPU × BS=8, TRAIN_SIZE=640 → 20 train batches/epoch.
+    # val_every_epochs=5 fires every 100 steps → ~60 top-K comparisons over the
+    # 6000-step run. EMA at 0.9999 damps residual oscillation between snapshots.
     val_split_name: val
-    val_batch_size_per_gpu: 16
-    val_every_epochs: 10
+    val_batch_size_per_gpu: 8
+    val_every_epochs: 5
     num_sanity_val_steps: 0
     # Wandb is mandatory for all training runs (see CLAUDE.md "Run logging
     # policy"). Override `wandb_name` per-run via --override or env var so each

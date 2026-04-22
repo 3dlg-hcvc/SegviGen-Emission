@@ -79,8 +79,10 @@ SBATCH wrappers live under `script/star2/<task>.sh` — one script per experimen
 
 - Shebang: `#!/bin/zsh`.
 - `source ~/.zshrc` before `conda activate trellis2`.
-- Pipe exit codes: zsh uses 1-indexed lowercase `${pipestatus[1]}` — **not** bash's `${PIPESTATUS[0]}` — when capturing `train.py`'s exit through a `tee` pipe.
+- Pipe exit codes: zsh uses 1-indexed lowercase `${pipestatus[1]}` — **not** bash's `${PIPESTATUS[0]}` — when capturing `train.py`'s exit through a `tee` pipe. End the body with `exit \$TRAIN_EXIT` so Slurm records training failures as failures.
 - Tee logs into `log/${TS}-${NAME}.log` per the Run Logs convention (the `mkdir -p log` + `TS=$(date +%Y%m%d-%H%M%S)` block lives inside the SBATCH body so the timestamp is the actual run start on the node).
+- **Sync the launcher's commit to the cluster.** Never edit source files on the cluster; edit locally, `git push origin <branch>`, and put `git pull origin <branch>` in the sbatch body right after `cd /localscratch/dya78/TRELLIS.2-lightning`. This makes "what code ran" unambiguous and lets multiple collaborators share the cluster clone without racing edits.
+- **Regenerate gitignored artifacts in the body.** Files under `data/` (e.g. `data_splits_*.json` produced by `data_toolkit/prep_*.py`) are gitignored and won't arrive via `git pull` — regenerate them in the body so a fresh cluster clone works end-to-end.
 
 Naming convention: `script/star2/<task>.sh` ↔ job name / output dir `<task>[_<TAG>]` ↔ status report `reports/<task>_status.md` (see existing `reports/*.md` for templates). When adding a new launch script, copy the closest existing one under `script/star2/` rather than writing from scratch.
 
@@ -163,7 +165,21 @@ dataset:
 
 For validation on the same 10 samples, use **only** `val_split_name: val` in the trainer args (and **not** `val_split_file`). Background: `TrellisDataModule` injects `val_split_file` as the kwarg `split_file=...`, but `LightGenSLatEmission.__init__` accepts `split_json` / `split_indices` only — passing `val_split_file` will TypeError. With just `val_split_name: val`, the data module clones the train args (which already include `split_json`) and overrides `split` to `"val"`, which works.
 
-Pick `TRAIN_SIZE` to be a multiple of `num_gpus * batch_size_per_gpu` for clean step counts (e.g. `TRAIN_SIZE=128` for 4×8=32 global batch → 4 steps/epoch).
+`TRAIN_SIZE` **must** be an exact multiple of `num_gpus * batch_size_per_gpu` so `drop_last=True` drops **zero** rows and every epoch visits every position. A multiple that is merely "clean for step counts" but leaves a tail (e.g. 120 with global batch 64 → 56 dropped, ~47%) is a bug — with rotating shuffle (see `ResumableSampler.set_epoch`, fixed in e6df30c) the dropped rows differ each epoch, but you're still leaving half the intended oversample on the floor per epoch. For 10 unique samples × 4 GPUs × BS=16 (global 64), use `TRAIN_SIZE=640` (each sample visited 64× / epoch, zero drop). Regenerate in the sbatch body on each submission so it's always consistent with the current `num_gpus × batch_size_per_gpu`.
+
+### Load balancing across DDP ranks (BalancedResumableSampler)
+
+Sparse-voxel datasets have ~100× per-sample memory variance (emission `.vxz` files range 5–561 KB in the 10-sample split). Under `ResumableSampler` + DDP, a permutation that concentrates heavy samples on one rank will OOM that rank while the others sit comfortably. This was masked pre-e6df30c because the sampler never actually rotated the shuffle; once it rotated, rank 0 OOMed mid-run.
+
+Fix is `BalancedResumableSampler` (in `trellis2/utils/data_utils.py`), which splits each super-batch (`batch_size * world_size`) into `world_size` equal-size sub-groups via `load_balanced_group_indices(loads, world_size, equal_size=True)`. It requires the dataset to expose `self.loads: List[int]` indexed in the same order as `self.samples`. Enable with `trainer.args.use_balanced_sampler: true`.
+
+**Pick the right load proxy — voxel count, not file size.** Sparse activation memory scales with `coords.shape[0]`, not bytes on disk. `.vxz` files are compressed with variable ratios: in the 10-sample split, bytes/voxel varies 8.5× (0.12–1.02), Pearson correlation between file size and voxel count is only 0.70, and voxel-count range (11.5×) is far narrower than file-size range (101.5×). File-size balancing therefore under-weights high-voxel-count + high-compression samples. For small datasets read `coords.shape[0]` once per sample at `__init__` (via `o_voxel.io.read_vxz`; ~10 ms per sample); for large datasets precompute into the parquet/metadata (sibling `sparse_voxel_pbr.py` uses `num_pbr_voxels`, `structured_latent.py` uses `{latent_key}_tokens`).
+
+- `LightGenSLatEmission` — exposes `self.loads`. First version used `.vxz` file size (fast but only 0.70 correlation with real memory); replace with voxel count for accurate balancing.
+- `LightGenSLatEmissionLatent` — does **not** provide `loads` yet. Add it before any balanced DiT run (e.g. `tokens_per_sample` from the latent metadata).
+- For any new sparse dataset, add `self.loads` up front using voxel/token count; the cost at init is negligible and it future-proofs DDP scaling.
+
+**Load balancing alone doesn't solve an overprovisioned batch size.** Even with ideal balancing, if all ranks run at the VRAM edge (observed: ~44 GB / 45 GB L40S after rotation), *any* run-to-run memory spike (Triton autotuner, checkpoint recomputation) can OOM a rank. Balancing + right-sized `batch_size_per_gpu` are complementary, not substitutes.
 
 ### Key Source Locations
 
