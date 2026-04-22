@@ -24,7 +24,7 @@ Out of scope: the 2D max-projection PNG scripts (`vis_emission_vae.py`, `vis_emi
 
 ## Deliverables
 
-1. `vis/_vis_common.py` — shared helpers (sample loader, voxel reader, frame computation, Three.js panel builders, HTML template, trainer-type resolver).
+1. `vis/vis_utils.py` — shared helpers (sample loader, voxel reader, frame computation, Three.js panel builders, HTML template, trainer-type resolver).
 2. `vis/vis_3d_vae.py` — unified VAE-reconstruction visualization. Covers the common cases of `vis_3d_emission_vae.py`, `vis_3d_pbr_finetune.py`, `vis_3d_overfit.py`, and the "no model, just GLB + GT" case of `vis_voxel_vs_glb.py`.
 3. `vis/vis_3d_dit.py` — unified DiT→decode visualization. Covers `vis_3d_emission_dit.py` and `vis_3d_emission_dit_pbrvae.py`.
 4. `vis/legacy/` — all existing `vis_3d_*.py` moved here in the same commit. They are not deleted: they are the ground-truth reference for HTML output during migration, and the pretrained-PBR-VAE / voxelization-roundtrip scripts remain live there.
@@ -72,7 +72,7 @@ No per-sample viewer-side affine is needed beyond step 1. The camera auto-fits t
 
 **`pbr_y_up` note.** If the voxelization run used `--pbr_y_up` to convert Blender Z-up dumps to Y-up before voxelization, the GLB on disk may already be in Y-up. For the 10-sample `lightgen_test` set this is a fixed per-dataset choice. The GLB loader applies the same Z-up → Y-up rotation only if the dataset's voxelization used it; it's a single boolean passed to `build_glb_panel`, not a per-sample decision.
 
-## Shared helpers (`vis/_vis_common.py`)
+## Shared helpers (`vis/vis_utils.py`)
 
 Single source of truth for everything currently duplicated across the existing scripts.
 
@@ -136,7 +136,7 @@ Behaviour:
 
 ## Migration plan
 
-1. Land `vis/_vis_common.py` and `vis/vis_3d_vae.py`. Smoke test: reproduce one HTML per replaced script's primary use case and eyeball-diff against the corresponding legacy output.
+1. Land `vis/vis_utils.py` and `vis/vis_3d_vae.py`. Smoke test: reproduce one HTML per replaced script's primary use case and eyeball-diff against the corresponding legacy output.
 2. Land `vis/vis_3d_dit.py`. Same smoke test.
 3. Move existing `vis/vis_3d_*.py` into `vis/legacy/` in the same commit. The 2D PNG scripts stay at `vis/` root since they are out of scope.
 4. Update `CLAUDE.md` "Visualization scripts" note to point at the two new scripts.

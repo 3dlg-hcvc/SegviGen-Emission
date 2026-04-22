@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the ~8 `vis_3d_*.py` scripts under `vis/` with two task-family scripts (`vis_3d_vae.py`, `vis_3d_dit.py`) sharing `vis/_vis_common.py`. Each script renders `GLB | GT emission | experiment_1 | ... | experiment_N` as synced Three.js panels with per-prediction `emission L1` captions.
+**Goal:** Replace the ~8 `vis_3d_*.py` scripts under `vis/` with two task-family scripts (`vis_3d_vae.py`, `vis_3d_dit.py`) sharing `vis/vis_utils.py`. Each script renders `GLB | GT emission | experiment_1 | ... | experiment_N` as synced Three.js panels with per-prediction `emission L1` captions.
 
 **Architecture:** One shared helper module with sample loading, voxel I/O, checkpoint resolution, VAE trainer-type dispatch (`EmissionVaeTrainer` vs `EmissionPbrFinetuneTrainer`), Three.js panel builders, and HTML template emission. Two entry scripts consume the helpers; they differ only in whether they run a VAE encode+decode or a DiT sample-then-decode pipeline. GLB mesh and voxels share a canonical `[-0.5, 0.5]^3` frame — GLB gets re-normalized at load time the same way `data_toolkit/voxelize_pbr.py:77–86` did during voxelization; voxel integer coords become `i / res - 0.5 + 0.5 / res`. Per-canvas `OrbitControls` with `change`-event broadcast keeps all panels in sync.
 
@@ -14,10 +14,10 @@
 
 ---
 
-## Task 1: Scaffold `_vis_common.py` and create `vis/legacy/`
+## Task 1: Scaffold `vis_utils.py` and create `vis/legacy/`
 
 **Files:**
-- Create: `vis/_vis_common.py`
+- Create: `vis/vis_utils.py`
 - Create: `vis/legacy/.gitkeep`
 
 - [ ] **Step 1: Create the legacy directory with a placeholder**
@@ -26,7 +26,7 @@ Run: `mkdir -p /local-scratch/localhome/dya78/code/TRELLIS.2-lightning/vis/legac
 
 - [ ] **Step 2: Create the empty helper module with the standard import block and module docstring**
 
-Write `vis/_vis_common.py`:
+Write `vis/vis_utils.py`:
 
 ```python
 """Shared helpers for 3D interactive visualizations.
@@ -70,16 +70,16 @@ import o_voxel  # noqa: E402
 
 - [ ] **Step 3: Verify the module imports cleanly**
 
-Run: `conda run -n trellis2 python -c "import sys; sys.path.insert(0, '/local-scratch/localhome/dya78/code/TRELLIS.2-lightning'); import vis._vis_common as _c; print('ok', _c.__file__)"`
+Run: `conda run -n trellis2 python -c "import sys; sys.path.insert(0, '/local-scratch/localhome/dya78/code/TRELLIS.2-lightning'); import vis.vis_utils as _c; print('ok', _c.__file__)"`
 
-Expected: `ok /local-scratch/localhome/dya78/code/TRELLIS.2-lightning/vis/_vis_common.py`
+Expected: `ok /local-scratch/localhome/dya78/code/TRELLIS.2-lightning/vis/vis_utils.py`
 
 - [ ] **Step 4: Commit**
 
 ```bash
 cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning
-git add vis/_vis_common.py vis/legacy/.gitkeep
-git commit -m "vis: scaffold _vis_common.py + legacy/ directory"
+git add vis/vis_utils.py vis/legacy/.gitkeep
+git commit -m "vis: scaffold vis_utils.py + legacy/ directory"
 ```
 
 ---
@@ -87,10 +87,10 @@ git commit -m "vis: scaffold _vis_common.py + legacy/ directory"
 ## Task 2: `SampleRecord` + `load_samples`
 
 **Files:**
-- Modify: `vis/_vis_common.py` (append to end of file)
-- Create: `vis/_vis_common_test.py`
+- Modify: `vis/vis_utils.py` (append to end of file)
+- Create: `vis/vis_utils_test.py`
 
-- [ ] **Step 1: Append the data model and loader to `vis/_vis_common.py`**
+- [ ] **Step 1: Append the data model and loader to `vis/vis_utils.py`**
 
 ```python
 # =============================================================================
@@ -216,15 +216,15 @@ def load_samples(
 
 - [ ] **Step 2: Write the assertion-based test**
 
-Write `vis/_vis_common_test.py`:
+Write `vis/vis_utils_test.py`:
 
 ```python
-"""Smoke tests for vis/_vis_common.py — run as a plain script."""
+"""Smoke tests for vis/vis_utils.py — run as a plain script."""
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from vis._vis_common import SampleRecord, load_samples
+from vis.vis_utils import SampleRecord, load_samples
 
 DATA_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "lightgen_test"))
 
@@ -289,7 +289,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 3: Run the test**
 
-Run: `cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning && conda run -n trellis2 python vis/_vis_common_test.py`
+Run: `cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning && conda run -n trellis2 python vis/vis_utils_test.py`
 
 Expected output (each line on stdout):
 ```
@@ -304,7 +304,7 @@ If any test fails, inspect the raised `AssertionError` and the actual path value
 - [ ] **Step 4: Commit**
 
 ```bash
-git add vis/_vis_common.py vis/_vis_common_test.py
+git add vis/vis_utils.py vis/vis_utils_test.py
 git commit -m "vis: SampleRecord + load_samples (parquet/splits/sha sources)"
 ```
 
@@ -313,10 +313,10 @@ git commit -m "vis: SampleRecord + load_samples (parquet/splits/sha sources)"
 ## Task 3: Voxel I/O + emission L1
 
 **Files:**
-- Modify: `vis/_vis_common.py`
-- Modify: `vis/_vis_common_test.py`
+- Modify: `vis/vis_utils.py`
+- Modify: `vis/vis_utils_test.py`
 
-- [ ] **Step 1: Append voxel helpers to `vis/_vis_common.py`**
+- [ ] **Step 1: Append voxel helpers to `vis/vis_utils.py`**
 
 ```python
 # =============================================================================
@@ -376,7 +376,7 @@ def compute_emission_l1(
     return float((pred_feats - gt_feats).abs().mean().item())
 ```
 
-- [ ] **Step 2: Append tests to `vis/_vis_common_test.py`**
+- [ ] **Step 2: Append tests to `vis/vis_utils_test.py`**
 
 Add after the existing imports and before `if __name__ == "__main__":` by editing the file. Insert these new test functions before the main block:
 
@@ -388,7 +388,7 @@ def test_read_emission_voxel():
         source=os.path.join(DATA_ROOT, "df_10samples.parquet"),
         select="first:1",
     )
-    coords, feats, res = __import__("vis._vis_common", fromlist=["read_emission_voxel"]).read_emission_voxel(recs[0].emission_voxel_path)
+    coords, feats, res = __import__("vis.vis_utils", fromlist=["read_emission_voxel"]).read_emission_voxel(recs[0].emission_voxel_path)
     assert coords.ndim == 2 and coords.shape[1] == 3, coords.shape
     assert feats.ndim == 2 and feats.shape[1] == 3, feats.shape
     assert feats.min() >= -1.0 and feats.max() <= 1.0, (feats.min(), feats.max())
@@ -397,7 +397,7 @@ def test_read_emission_voxel():
 
 
 def test_emission_to_srgb_u8():
-    from vis._vis_common import emission_to_srgb_u8
+    from vis.vis_utils import emission_to_srgb_u8
     import torch
     # black (-1, -1, -1) → 0; white (+1, +1, +1) → 255.
     black = emission_to_srgb_u8(torch.tensor([[-1.0, -1.0, -1.0]]))
@@ -407,7 +407,7 @@ def test_emission_to_srgb_u8():
 
 
 def test_compute_emission_l1_zero_for_equal_inputs():
-    from vis._vis_common import compute_emission_l1
+    from vis.vis_utils import compute_emission_l1
     import torch
     coords = torch.zeros((4, 3), dtype=torch.int32)
     feats = torch.tensor([[0.1, 0.2, 0.3]] * 4)
@@ -435,14 +435,14 @@ if __name__ == "__main__":
 
 - [ ] **Step 3: Run tests**
 
-Run: `cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning && conda run -n trellis2 python vis/_vis_common_test.py`
+Run: `cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning && conda run -n trellis2 python vis/vis_utils_test.py`
 
 Expected: all six `ok:` lines followed by `all passed`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add vis/_vis_common.py vis/_vis_common_test.py
+git add vis/vis_utils.py vis/vis_utils_test.py
 git commit -m "vis: read_emission_voxel + emission_to_srgb_u8 + compute_emission_l1"
 ```
 
@@ -451,10 +451,10 @@ git commit -m "vis: read_emission_voxel + emission_to_srgb_u8 + compute_emission
 ## Task 4: `resolve_experiment` + checkpoint selection
 
 **Files:**
-- Modify: `vis/_vis_common.py`
-- Modify: `vis/_vis_common_test.py`
+- Modify: `vis/vis_utils.py`
+- Modify: `vis/vis_utils_test.py`
 
-- [ ] **Step 1: Append experiment resolution to `vis/_vis_common.py`**
+- [ ] **Step 1: Append experiment resolution to `vis/vis_utils.py`**
 
 ```python
 # =============================================================================
@@ -542,11 +542,11 @@ def resolve_experiment(label: str, path: str) -> ExperimentHandle:
 
 - [ ] **Step 2: Append the test**
 
-Add to `vis/_vis_common_test.py` (before the `if __name__` block):
+Add to `vis/vis_utils_test.py` (before the `if __name__` block):
 
 ```python
 def test_resolve_experiment_run_dir():
-    from vis._vis_common import resolve_experiment
+    from vis.vis_utils import resolve_experiment
     # Any existing run dir works — pick the overfit one that's been around longest.
     run_dir = os.path.join(os.path.dirname(__file__), "..", "outputs", "emission_vae_10sample_overfit")
     if not os.path.isdir(run_dir):
@@ -559,7 +559,7 @@ def test_resolve_experiment_run_dir():
 
 
 def test_resolve_experiment_ckpt_file():
-    from vis._vis_common import resolve_experiment
+    from vis.vis_utils import resolve_experiment
     run_dir = os.path.join(os.path.dirname(__file__), "..", "outputs", "emission_vae_10sample_overfit")
     if not os.path.isdir(run_dir):
         print("skip: run_dir missing")
@@ -584,14 +584,14 @@ And add calls in the `__main__` block:
 
 - [ ] **Step 3: Run tests**
 
-Run: `cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning && conda run -n trellis2 python vis/_vis_common_test.py`
+Run: `cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning && conda run -n trellis2 python vis/vis_utils_test.py`
 
 Expected: all existing `ok:` lines plus the two new ones, then `all passed`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add vis/_vis_common.py vis/_vis_common_test.py
+git add vis/vis_utils.py vis/vis_utils_test.py
 git commit -m "vis: resolve_experiment + ckpt-selection rule (last.ckpt > min val/loss)"
 ```
 
@@ -600,7 +600,7 @@ git commit -m "vis: resolve_experiment + ckpt-selection rule (last.ckpt > min va
 ## Task 5: `load_vae_from_handle` with trainer-type dispatch
 
 **Files:**
-- Modify: `vis/_vis_common.py`
+- Modify: `vis/vis_utils.py`
 
 - [ ] **Step 1: Append the VAE loader**
 
@@ -696,11 +696,11 @@ def load_vae_from_handle(handle: "ExperimentHandle", device: str = "cuda"):
 
 - [ ] **Step 2: Add a tiny integration test**
 
-Append to `vis/_vis_common_test.py`:
+Append to `vis/vis_utils_test.py`:
 
 ```python
 def test_load_vae_from_handle_smoke():
-    from vis._vis_common import (
+    from vis.vis_utils import (
         load_vae_from_handle, resolve_experiment, load_samples, read_emission_voxel,
     )
     import torch
@@ -741,14 +741,14 @@ Add the call to `__main__`:
 
 - [ ] **Step 3: Run tests**
 
-Run: `cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning && conda run -n trellis2 python vis/_vis_common_test.py`
+Run: `cd /local-scratch/localhome/dya78/code/TRELLIS.2-lightning && conda run -n trellis2 python vis/vis_utils_test.py`
 
 Expected: all `ok:` lines plus `ok: load_vae_from_handle smoke` (or `skip: ...` if CUDA/run_dir missing).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add vis/_vis_common.py vis/_vis_common_test.py
+git add vis/vis_utils.py vis/vis_utils_test.py
 git commit -m "vis: load_vae_from_handle with EmissionVae/PbrFinetune dispatch"
 ```
 
@@ -757,11 +757,11 @@ git commit -m "vis: load_vae_from_handle with EmissionVae/PbrFinetune dispatch"
 ## Task 6: Three.js panel builders + HTML template
 
 **Files:**
-- Modify: `vis/_vis_common.py`
+- Modify: `vis/vis_utils.py`
 
 - [ ] **Step 1: Append the template module**
 
-Append to `vis/_vis_common.py`:
+Append to `vis/vis_utils.py`:
 
 ```python
 # =============================================================================
@@ -1049,7 +1049,7 @@ def render_html(
 - [ ] **Step 2: Commit**
 
 ```bash
-git add vis/_vis_common.py
+git add vis/vis_utils.py
 git commit -m "vis: Three.js panel builders + render_html template"
 ```
 
@@ -1089,7 +1089,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import o_voxel  # noqa: E402
 import torch    # noqa: E402
 
-from vis._vis_common import (  # noqa: E402
+from vis.vis_utils import (  # noqa: E402
     ExperimentHandle, compute_emission_l1, load_samples,
     load_vae_from_handle, make_glb_panel_data, make_voxel_panel_data,
     read_emission_voxel, render_html, resolve_experiment,
@@ -1260,7 +1260,7 @@ Use the MCP Codex tool with this prompt (paste via your normal agent invocation)
 
 > Review the following files for correctness, focusing on: (a) the voxel-cell centre-offset math in `buildPointCloud` matches the `i / res - 0.5 + 0.5 / res` rule from the design spec; (b) the GLB normalization in `normaliseGlb` correctly re-applies the voxelization transform from `data_toolkit/voxelize_pbr.py:77–86`; (c) `load_vae_from_handle` correctly reproduces the encode/decode path of `trellis2/trainers/vae/emission_vae.py` and `emission_pbr_finetune.py`; (d) `_pick_checkpoint` follows the "last.ckpt > min val/loss > lexicographic-last" rule.
 > Files to review:
-> - `/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/vis/_vis_common.py`
+> - `/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/vis/vis_utils.py`
 > - `/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/vis/vis_3d_vae.py`
 > Reference files to cross-check against:
 > - `/local-scratch/localhome/dya78/code/TRELLIS.2-lightning/data_toolkit/voxelize_pbr.py`
@@ -1326,7 +1326,7 @@ from torchvision import transforms  # noqa: E402
 
 import o_voxel  # noqa: E402
 
-from vis._vis_common import (  # noqa: E402
+from vis.vis_utils import (  # noqa: E402
     compute_emission_l1, load_samples, make_glb_panel_data,
     make_voxel_panel_data, read_emission_voxel, render_html, resolve_experiment,
 )
@@ -1638,7 +1638,7 @@ git mv vis/vis_3d_pbr_vae_val.py              vis/legacy/
 git mv vis/vis_voxel_vs_glb.py                vis/legacy/
 ```
 
-Verify: `ls vis/` should now show `_vis_common.py`, `_vis_common_test.py`, `vis_3d_vae.py`, `vis_3d_dit.py`, `legacy/`, plus the 2D-PNG scripts (`compare_*.py`, `vis_emission_vae*.py`, `vis_vae_ckpt_comparison.py`).
+Verify: `ls vis/` should now show `vis_utils.py`, `vis_utils_test.py`, `vis_3d_vae.py`, `vis_3d_dit.py`, `legacy/`, plus the 2D-PNG scripts (`compare_*.py`, `vis_emission_vae*.py`, `vis_vae_ckpt_comparison.py`).
 
 - [ ] **Step 2: Update CLAUDE.md "Data Paths" section**
 
@@ -1651,7 +1651,7 @@ Old:
 
 New:
 ```
-- **Visualization scripts:** `vis/` — unified 3D interactive: `vis/vis_3d_vae.py` (VAE recon) and `vis/vis_3d_dit.py` (DiT → VAE decode). Both share helpers in `vis/_vis_common.py`. Legacy per-case scripts live in `vis/legacy/` for reference.
+- **Visualization scripts:** `vis/` — unified 3D interactive: `vis/vis_3d_vae.py` (VAE recon) and `vis/vis_3d_dit.py` (DiT → VAE decode). Both share helpers in `vis/vis_utils.py`. Legacy per-case scripts live in `vis/legacy/` for reference.
 ```
 
 Edit via `Edit` tool using the exact old/new strings above.
@@ -1675,7 +1675,7 @@ Expected: `vis/` contains the unified pair + 2D scripts; `vis/legacy/` contains 
 
 | Spec requirement | Task |
 |---|---|
-| Shared `_vis_common.py` with sample loader, voxel reader, frame computation, Three.js builders, HTML template, trainer-type resolver | Tasks 1–6 |
+| Shared `vis_utils.py` with sample loader, voxel reader, frame computation, Three.js builders, HTML template, trainer-type resolver | Tasks 1–6 |
 | `load_samples` covers parquet + splits JSON + sha list with `(data_root, resolution, sha)` path resolution | Task 2 |
 | `read_emission_voxel` + sRGB gamma | Task 3 |
 | `compute_emission_l1` caption metric | Task 3 |
