@@ -56,6 +56,40 @@ def test_load_samples_sha_csv():
     assert len(recs) == 2, f"expected 2, got {len(recs)}"
 
 
+def test_read_emission_voxel():
+    recs = load_samples(
+        data_root=DATA_ROOT,
+        resolution=256,
+        source=os.path.join(DATA_ROOT, "df_10samples.parquet"),
+        select="first:1",
+    )
+    from vis.vis_utils import read_emission_voxel
+    coords, feats, res = read_emission_voxel(recs[0].emission_voxel_path)
+    assert coords.ndim == 2 and coords.shape[1] == 3, coords.shape
+    assert feats.ndim == 2 and feats.shape[1] == 3, feats.shape
+    assert feats.min() >= -1.0 and feats.max() <= 1.0, (feats.min(), feats.max())
+    assert res == 256, f"expected 256, got {res}"
+    assert coords.shape[0] == feats.shape[0]
+
+
+def test_emission_to_srgb_u8():
+    from vis.vis_utils import emission_to_srgb_u8
+    import torch
+    # black (-1, -1, -1) → 0; white (+1, +1, +1) → 255.
+    black = emission_to_srgb_u8(torch.tensor([[-1.0, -1.0, -1.0]]))
+    white = emission_to_srgb_u8(torch.tensor([[1.0, 1.0, 1.0]]))
+    assert black.tolist() == [[0, 0, 0]], black.tolist()
+    assert white.tolist() == [[255, 255, 255]], white.tolist()
+
+
+def test_compute_emission_l1_zero_for_equal_inputs():
+    from vis.vis_utils import compute_emission_l1
+    import torch
+    coords = torch.zeros((4, 3), dtype=torch.int32)
+    feats = torch.tensor([[0.1, 0.2, 0.3]] * 4)
+    assert compute_emission_l1(coords, feats, coords, feats) == 0.0
+
+
 if __name__ == "__main__":
     test_load_samples_from_parquet_first_3()
     print("ok: parquet first:3")
@@ -63,4 +97,10 @@ if __name__ == "__main__":
     print("ok: splits json split:val")
     test_load_samples_sha_csv()
     print("ok: sha csv")
+    test_read_emission_voxel()
+    print("ok: read_emission_voxel")
+    test_emission_to_srgb_u8()
+    print("ok: emission_to_srgb_u8")
+    test_compute_emission_l1_zero_for_equal_inputs()
+    print("ok: compute_emission_l1 zero")
     print("all passed")

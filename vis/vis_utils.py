@@ -173,3 +173,60 @@ def load_samples(
         if rec.has_all(require):
             records.append(rec)
     return records
+
+
+# =============================================================================
+# Voxel I/O and metrics
+# =============================================================================
+
+def read_emission_voxel(path: str) -> tuple[torch.Tensor, torch.Tensor, int]:
+    """Read an emission .vxz and return (coords, feats_normed, resolution).
+
+    coords: int32 [N, 3], voxel grid indices.
+    feats_normed: float32 [N, 3] in [-1, 1] (linear emission, *not* sRGB).
+    resolution: int grid size. Inferred as 2 ** ceil(log2(coords.max()+1))
+        if the file header does not expose it.
+    """
+    coords, attr = o_voxel.io.read_vxz(path, num_threads=4)
+    feats = attr["emissive"].float() / 255.0 * 2.0 - 1.0
+    max_idx = int(coords.max().item()) + 1 if coords.numel() else 1
+    # Known resolutions in this project are 256 and 512; pick the smallest
+    # power of 2 not below max_idx.
+    res = 1
+    while res < max_idx:
+        res <<= 1
+    return coords, feats, res
+
+
+def emission_to_srgb_u8(feats_norm: torch.Tensor) -> torch.Tensor:
+    """Convert [-1, 1] linear emission to uint8 sRGB.
+
+    Identical curve to vis/vis_3d_overfit.py:184–192.
+    """
+    linear = (feats_norm * 0.5 + 0.5).clamp(0, 1)
+    srgb = torch.where(
+        linear <= 0.0031308,
+        linear * 12.92,
+        1.055 * linear.pow(1.0 / 2.4) - 0.055,
+    )
+    return (srgb.clamp(0, 1) * 255).round().byte()
+
+
+def compute_emission_l1(
+    pred_coords: torch.Tensor,
+    pred_feats: torch.Tensor,
+    gt_coords: torch.Tensor,
+    gt_feats: torch.Tensor,
+) -> float:
+    """Mean L1 between pred and GT emission features at matching voxel positions.
+
+    In all our configs, pred voxels live on exactly the same grid as GT (VAEs and
+    DiTs do not change the sparsity pattern — they only change features), so we
+    assert equal row counts and compute per-row L1. Both tensors are expected in
+    [-1, 1] normalised space.
+    """
+    if pred_coords.shape[0] != gt_coords.shape[0]:
+        raise ValueError(
+            f"coord count mismatch: pred {pred_coords.shape[0]} vs gt {gt_coords.shape[0]}"
+        )
+    return float((pred_feats - gt_feats).abs().mean().item())
