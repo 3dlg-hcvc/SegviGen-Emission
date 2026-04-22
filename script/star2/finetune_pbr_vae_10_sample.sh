@@ -4,14 +4,15 @@
 # Config: configs/scvae/emission_pbr_vae_finetune_10sample.yaml
 # Trainer: EmissionPbrFinetuneTrainer (channel-hijack of pretrained PBR VAE)
 # Data:   repo-relative `data/lightgen_test/` (10 samples, oversampled split with
-#         TRAIN_SIZE=120 — see data_toolkit/prep_10sample_as1k.py).
+#         TRAIN_SIZE=640 = 4 GPUs * BS=16 * 10 unique — regenerated on launch
+#         via data_toolkit/prep_10sample_as1k.py so 640 % global_batch == 0
+#         and drop_last drops zero rows).
 #
 # Env vars:
 #   NUM_GPUS    number of GPUs (default 4 — matches the tested overfit setup;
 #               see CLAUDE.md "Tiny-dataset overfit setup (10 samples + 4 GPUs)").
-#               Changing this may require regenerating the oversampled split so
-#               TRAIN_SIZE % (NUM_GPUS * batch_size_per_gpu) == 0
-#               (e.g. TRAIN_SIZE=128 for 4×8=32 global batch).
+#               Changing this requires bumping TRAIN_SIZE below to stay a
+#               multiple of (NUM_GPUS * batch_size_per_gpu).
 #   MAX_STEPS   optional override for trainer.args.max_steps (probe runs e.g. 50).
 #   TAG         suffix on job name / output dir / log file (default = "g${NUM_GPUS}").
 
@@ -45,7 +46,7 @@ ssh star2 "sbatch" << EOF
 #SBATCH --mem=$((64*NUM_GPUS))G
 #SBATCH --time=5-15:00
 #SBATCH --cpus-per-task=32
-#SBATCH --nodelist=cs-venus-16
+#SBATCH --nodelist=cs-venus-15
 #SBATCH --output=/localscratch/dya78/${NAME}.out
 #SBATCH -J ${NAME}
 
@@ -55,6 +56,12 @@ echo "Config: ${CONFIG}  NUM_GPUS=${NUM_GPUS}  STEPS_OVERRIDE='${STEPS_OVERRIDE}
 source ~/.zshrc
 cd /localscratch/dya78/TRELLIS.2-lightning
 conda activate trellis2
+git pull origin lightgen
+
+# Regenerate the oversampled split (not tracked in git since data/ is gitignored).
+# TRAIN_SIZE=640 = 64 (global batch) * 10 (unique samples) → 10 train batches/epoch,
+# drop_last drops zero rows.
+TRAIN_SIZE=640 python data_toolkit/prep_10sample_as1k.py
 
 # Reduce fragmentation — helps sparse voxel workloads with variable batch memory.
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -86,6 +93,7 @@ python train.py \
 TRAIN_EXIT=\${pipestatus[1]}
 kill \$MON_PID 2>/dev/null || true
 echo "Job End: ${NAME}  exit=\$TRAIN_EXIT"
+exit \$TRAIN_EXIT
 EOF
 
 echo "Submitted: ${NAME}"

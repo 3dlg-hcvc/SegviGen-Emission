@@ -277,6 +277,13 @@ class LightGenSLatEmission(Dataset):
         self.samples = _build_parquet_samples(
             data_root, parquet_file, split, min_emission, split_indices, split_json
         )
+        # Per-sample "load" for BalancedResumableSampler (and collate split_size).
+        # Emission .vxz file size is proportional to voxel count (fixed-byte-per-
+        # voxel attrs), so it's a cheap, accurate proxy for per-sample memory.
+        # 112x variance in practice — unbalanced assignment to ranks causes OOM.
+        self.loads = [
+            os.path.getsize(self._emission_vxz(s["sha256"])) for s in self.samples
+        ]
         print(
             f"[LightGenSLatEmission] split={split!r}: {len(self.samples)} samples  "
             f"res={resolution}  in_channels={self.in_channels}  "
