@@ -64,17 +64,12 @@ def _resolve_paths(
     sha: str,
     glb_root: Optional[str],
     glb_rel: Optional[str],
-    thumbnail_rel: Optional[str],
     latent_names: Optional[dict[str, str]],
 ) -> SampleRecord:
     emission_voxel_path = os.path.join(data_root, f"emission_voxels_{resolution}", f"{sha}.vxz")
     pbr_voxel_path = os.path.join(data_root, f"pbr_voxels_{resolution}", f"{sha}.vxz")
     glb_path = os.path.join(glb_root, glb_rel) if (glb_root and glb_rel) else None
-    thumbnail_path = (
-        os.path.join(data_root, "thumbnails", f"{sha}.png")
-        if os.path.exists(os.path.join(data_root, "thumbnails", f"{sha}.png"))
-        else (os.path.join(data_root, "thumbnails", thumbnail_rel) if thumbnail_rel else None)
-    )
+    thumbnail_path = os.path.join(data_root, "thumbnails", f"{sha}.png")
     latents: dict[str, str] = {}
     if latent_names:
         for key, name in latent_names.items():
@@ -96,6 +91,7 @@ def load_samples(
     select: str = "all",
     glb_root: Optional[str] = None,
     latent_names: Optional[dict[str, str]] = None,
+    parquet_path: Optional[str] = None,
     require: tuple[str, ...] = ("emission_voxel_path",),
 ) -> list[SampleRecord]:
     """Load SampleRecords from a parquet, splits JSON, or comma-separated sha list.
@@ -107,6 +103,9 @@ def load_samples(
         select: one of "all", "first:<N>", "split:<name>", "sha:<csv>".
         glb_root: directory referenced by the parquet's ``glb_1k_path`` column.
         latent_names: e.g. {"emission": "emission_vae_10sample_overfit"}.
+        parquet_path: explicit path to the metadata parquet used when ``source``
+            is a splits JSON.  If omitted, the parquet is auto-discovered by
+            globbing ``<data_root>/df_*.parquet`` (exactly one match required).
         require: attribute names that must exist on disk to include a record.
 
     Returns SampleRecords filtered to those where all required paths exist.
@@ -115,7 +114,6 @@ def load_samples(
     if select.startswith("sha:"):
         shas = [s.strip() for s in select[4:].split(",") if s.strip()]
         glb_map: dict[str, str] = {}
-        thumb_map: dict[str, str] = {}
     elif source.endswith(".json"):
         with open(source) as f:
             splits = json.load(f)
@@ -124,13 +122,25 @@ def load_samples(
         if isinstance(entry, dict):
             # Format: {"indices": [0, 1, ...]} — resolve via the parquet in data_root.
             idx_list: list[int] = entry.get("indices", [])
-            parquet_path = os.path.join(data_root, "df_10samples.parquet")
+            if parquet_path is None:
+                import glob as _glob
+                matches = _glob.glob(os.path.join(data_root, "df_*.parquet"))
+                if len(matches) == 1:
+                    parquet_path = matches[0]
+                else:
+                    raise FileNotFoundError(
+                        f"could not auto-discover parquet under {data_root!r}; "
+                        f"pass parquet_path= (found {len(matches)} matches)"
+                    )
             _df = pd.read_parquet(parquet_path)
             all_shas = list(_df.index.astype(str))
             shas = [all_shas[i] for i in idx_list if i < len(all_shas)]
         else:
-            shas = list(entry)
-        glb_map, thumb_map = {}, {}
+            raise ValueError(
+                f"splits entry for {split_name!r} has unsupported type "
+                f"{type(entry).__name__}"
+            )
+        glb_map: dict[str, str] = {}
     else:
         df = pd.read_parquet(source)
         if "success" in df.columns:
@@ -141,7 +151,6 @@ def load_samples(
             df.index = df.index.astype(str)
         shas = list(df.index.astype(str))
         glb_map = df["glb_1k_path"].to_dict() if "glb_1k_path" in df.columns else {}
-        thumb_map = df["thumbnail_path"].to_dict() if "thumbnail_path" in df.columns else {}
 
     # --- Apply selector over the resolved shas -----------------------------
     if select.startswith("first:"):
@@ -159,7 +168,6 @@ def load_samples(
             sha=sha,
             glb_root=glb_root,
             glb_rel=glb_map.get(sha),
-            thumbnail_rel=thumb_map.get(sha),
             latent_names=latent_names,
         )
         if rec.has_all(require):
