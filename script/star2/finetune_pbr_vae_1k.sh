@@ -41,7 +41,10 @@ fi
 
 ssh star2 "sbatch" << EOF
 #!/bin/zsh
-#SBATCH --account=3dlg-hcvc-lab
+# default partition default-debug caps at 8h (auto-picked when --partition is
+# omitted); cs-gpu-research is the only 7-day partition cs-venus-18 belongs to
+# that we are allowed to use (NOT theia-lab-* — not our lab). --account is
+# omitted: dya78's sole association is 3dlg-hcvc-lab, so slurm picks it.
 #SBATCH --partition=cs-gpu-research
 #SBATCH --gres=${GPU_GRES}
 #SBATCH --mem=$((64*NUM_GPUS))G
