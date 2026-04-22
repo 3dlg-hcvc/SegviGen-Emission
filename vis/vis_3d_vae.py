@@ -47,11 +47,33 @@ def _parse_experiments(specs: list[str]) -> list[tuple[str, str]]:
     return out
 
 
+def _resolve_data_root(dataset_arg: str, experiments: list[ExperimentHandle], override: str | None) -> str:
+    """Pick the data_root to use, in priority order:
+    1. --data_root CLI override.
+    2. parent directory of --dataset (if it contains emission_voxels_<res>/).
+    3. experiments[0].data_root from config (final fallback; may be stale).
+    """
+    if override:
+        return os.path.abspath(override)
+    ds_parent = os.path.dirname(os.path.abspath(dataset_arg))
+    if experiments:
+        res = experiments[0].resolution
+        if os.path.isdir(os.path.join(ds_parent, f"emission_voxels_{res}")):
+            return ds_parent
+    elif os.path.isdir(os.path.join(ds_parent, "emission_voxels_256")):
+        return ds_parent
+    if experiments and os.path.isdir(experiments[0].data_root):
+        return experiments[0].data_root
+    return ds_parent
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", required=True, help="parquet or splits JSON path")
     ap.add_argument("--samples", default="all",
                     help="all | first:N | split:<name> | sha:<csv>")
+    ap.add_argument("--data_root", default=None,
+                    help="override data root; default = parent(--dataset) if it has emission_voxels_<res>/")
     ap.add_argument("--glb_root", default=None,
                     help="root for parquet's glb_1k_path; omit → GLB panel missing")
     ap.add_argument("--experiment", action="append", default=[],
@@ -66,14 +88,8 @@ def main():
     experiments: list[ExperimentHandle] = [
         resolve_experiment(name, path) for name, path in _parse_experiments(args.experiment)
     ]
-    # When there are experiments, resolution/data_root come from the first one's
-    # config. When there are none (data-only mode), infer from the parquet/default.
-    if experiments:
-        data_root = experiments[0].data_root
-        resolution = experiments[0].resolution
-    else:
-        data_root = os.path.dirname(os.path.abspath(args.dataset))
-        resolution = 256
+    data_root = _resolve_data_root(args.dataset, experiments, args.data_root)
+    resolution = experiments[0].resolution if experiments else 256
 
     records = load_samples(
         data_root=data_root,
