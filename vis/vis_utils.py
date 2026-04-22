@@ -402,3 +402,285 @@ def load_vae_from_handle(handle: "ExperimentHandle", device: str = "cuda"):
         )
 
     return decode_emission
+
+
+# =============================================================================
+# HTML / Three.js rendering
+# =============================================================================
+
+def make_voxel_panel_data(
+    coords: torch.Tensor,
+    feats_norm: torch.Tensor,
+    res: int,
+    threshold: float,
+    max_points: int,
+) -> dict:
+    mag = (feats_norm * 0.5 + 0.5).norm(dim=-1)
+    idx = torch.where(mag > threshold)[0]
+    if idx.shape[0] > max_points:
+        perm = torch.randperm(idx.shape[0])[:max_points]
+        idx = idx[perm]
+    c = coords[idx].long().numpy()
+    rgb = emission_to_srgb_u8(feats_norm[idx]).numpy()
+    return {
+        "xyz": c.flatten().tolist(),
+        "rgb": rgb.flatten().tolist(),
+        "n": int(idx.shape[0]),
+        "res": int(res),
+    }
+
+
+def make_glb_panel_data(glb_path: Optional[str], z_up_to_y_up: bool) -> dict:
+    # We serve the GLB as a file:// URL relative to the HTML output path; the
+    # entry scripts resolve this to an absolute file URL at write time.
+    return {"url": glb_path, "z_up_to_y_up": bool(z_up_to_y_up)}
+
+
+_HTML_TEMPLATE = """<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8"><title>{title}</title>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-serif; }}
+.header {{ padding:10px 18px; background:#141414; border-bottom:1px solid #2a2a2a; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }}
+.header h2 {{ font-size:14px; font-weight:600; }}
+.header select {{ background:#1e1e1e; color:#e0e0e0; border:1px solid #333; border-radius:4px; padding:4px 8px; font-size:13px; }}
+.row {{ display:flex; width:100%; height: calc(100vh - 44px); }}
+.cell {{ flex:1; display:flex; flex-direction:column; border-right:1px solid #222; min-width:0; }}
+.cell:last-child {{ border-right:none; }}
+.cap {{ padding:6px 10px; background:#111; border-bottom:1px solid #222; font-size:12px; color:#8cf; min-height: 26px; }}
+.label {{ position:absolute; top:6px; left:10px; background:rgba(0,0,0,0.65); padding:2px 8px; border-radius:3px; font-size:11px; color:#ccc; pointer-events:none; z-index:10; }}
+.pane {{ flex:1; position:relative; }}
+.pane canvas {{ display:block; width:100%; height:100%; }}
+.missing {{ display:flex; align-items:center; justify-content:center; color:#666; font-size:13px; width:100%; height:100%; }}
+</style></head><body>
+<div class="header">
+  <h2>{title}</h2>
+  <label for="sample-select">Sample:</label>
+  <select id="sample-select">{sample_options}</select>
+  <span id="sample-info" style="color:#888; font-size:12px;"></span>
+</div>
+<div class="row" id="row"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+(function() {{
+  var DATA = {data_json};
+  var POINT_SIZE = {point_size};
+  var row = document.getElementById('row');
+  var sel = document.getElementById('sample-select');
+  var info = document.getElementById('sample-info');
+
+  var panels = [];  // per-cell: {{renderer, scene, camera, controls, content, kind, label}}
+  function buildCells(panelSpec) {{
+    row.innerHTML = '';
+    panels = [];
+    panelSpec.forEach(function(p, i) {{
+      var cell = document.createElement('div');
+      cell.className = 'cell';
+      var cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.id = 'cap-' + i;
+      cap.textContent = p.caption || '';
+      var pane = document.createElement('div');
+      pane.className = 'pane';
+      var lab = document.createElement('div');
+      lab.className = 'label';
+      lab.textContent = p.label || '';
+      var cvs = document.createElement('canvas');
+      cvs.id = 'cvs-' + i;
+      pane.appendChild(lab);
+      pane.appendChild(cvs);
+      cell.appendChild(cap);
+      cell.appendChild(pane);
+      row.appendChild(cell);
+      var renderer = new THREE.WebGLRenderer({{ canvas: cvs, antialias: true }});
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setClearColor(0x0a0a0a);
+      var scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x333333, 1.0));
+      var camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
+      camera.position.set(1.2, 1.0, 1.2);
+      var controls = new THREE.OrbitControls(camera, cvs);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.12;
+      var rec = {{ renderer: renderer, scene: scene, camera: camera, controls: controls,
+                  content: null, kind: p.kind, label: p.label, pane: pane }};
+      panels.push(rec);
+      function resize() {{
+        var w = pane.clientWidth, h = pane.clientHeight;
+        if (!w || !h) return;
+        renderer.setSize(w, h);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }}
+      resize();
+      window.addEventListener('resize', resize);
+      new ResizeObserver(resize).observe(pane);
+      (function animate() {{
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }})();
+    }});
+    // Cross-canvas camera broadcast.
+    var syncing = false;
+    panels.forEach(function(src) {{
+      src.controls.addEventListener('change', function() {{
+        if (syncing) return;
+        syncing = true;
+        panels.forEach(function(dst) {{
+          if (dst === src) return;
+          dst.camera.position.copy(src.camera.position);
+          dst.camera.quaternion.copy(src.camera.quaternion);
+          dst.controls.target.copy(src.controls.target);
+          dst.controls.update();
+        }});
+        syncing = false;
+      }});
+    }});
+  }}
+
+  function buildPointCloud(d) {{
+    var n = d.n, xyz = d.xyz, rgb = d.rgb, res = d.res;
+    var inv = 1.0 / res;
+    var half = 0.5;
+    var offset = half * inv;  // voxel-cell-center offset
+    var pos = new Float32Array(n * 3);
+    var col = new Float32Array(n * 3);
+    for (var i = 0; i < n; i++) {{
+      // voxel_i / res - 0.5 + 0.5/res, then Y/Z swap to Three.js Y-up.
+      var x = xyz[i*3]   * inv - half + offset;
+      var y = xyz[i*3+1] * inv - half + offset;
+      var z = xyz[i*3+2] * inv - half + offset;
+      pos[i*3]   = x;
+      pos[i*3+1] = z;
+      pos[i*3+2] = y;
+      col[i*3]   = rgb[i*3]   / 255;
+      col[i*3+1] = rgb[i*3+1] / 255;
+      col[i*3+2] = rgb[i*3+2] / 255;
+    }}
+    var geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geom.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+    var mat = new THREE.PointsMaterial({{ size: POINT_SIZE, vertexColors: true, sizeAttenuation: true }});
+    return new THREE.Points(geom, mat);
+  }}
+
+  // Normalise a GLB mesh to [-0.5, 0.5]^3 using the same bbox/scale rule as
+  // data_toolkit/voxelize_pbr.py. Optionally apply Blender-Z-up → Y-up first.
+  function normaliseGlb(root, zUpToYUp) {{
+    if (zUpToYUp) {{
+      // +90° around X: (x, y, z) → (x, z, -y). Applied to each mesh vertex.
+      root.traverse(function(o) {{
+        if (o.isMesh && o.geometry && o.geometry.attributes.position) {{
+          var p = o.geometry.attributes.position.array;
+          for (var i = 0; i < p.length; i += 3) {{
+            var y = p[i+1], z = p[i+2];
+            p[i+1] = z;
+            p[i+2] = -y;
+          }}
+          o.geometry.attributes.position.needsUpdate = true;
+          o.geometry.computeBoundingBox();
+        }}
+      }});
+    }}
+    var box = new THREE.Box3().setFromObject(root);
+    var mn = box.min, mx = box.max;
+    var cx = (mn.x + mx.x) * 0.5, cy = (mn.y + mx.y) * 0.5, cz = (mn.z + mx.z) * 0.5;
+    var s = 0.99999 / Math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
+    root.traverse(function(o) {{
+      if (o.isMesh && o.geometry && o.geometry.attributes.position) {{
+        var p = o.geometry.attributes.position.array;
+        for (var i = 0; i < p.length; i += 3) {{
+          p[i]   = (p[i]   - cx) * s;
+          p[i+1] = (p[i+1] - cy) * s;
+          p[i+2] = (p[i+2] - cz) * s;
+        }}
+        o.geometry.attributes.position.needsUpdate = true;
+        o.geometry.computeBoundingBox();
+      }}
+    }});
+    // Voxel pipeline writes Y-up coords then we apply Y/Z swap at upload. For
+    // the GLB to land in the same viewer-space, apply the same swap on the
+    // mesh root after normalisation.
+    root.rotation.set(Math.PI / 2, 0, 0);
+  }}
+
+  function loadPanel(pIdx, d) {{
+    var rec = panels[pIdx];
+    if (rec.content) {{
+      rec.scene.remove(rec.content);
+      if (rec.content.geometry) rec.content.geometry.dispose();
+      if (rec.content.material) rec.content.material.dispose();
+      rec.content = null;
+    }}
+    if (rec.kind === 'voxel') {{
+      rec.content = buildPointCloud(d);
+      rec.scene.add(rec.content);
+    }} else if (rec.kind === 'glb') {{
+      if (!d.url) {{
+        var miss = document.createElement('div');
+        miss.className = 'missing';
+        miss.textContent = 'GLB unavailable';
+        rec.pane.appendChild(miss);
+        rec.content = null;
+        return;
+      }}
+      new THREE.GLTFLoader().load(d.url, function(gltf) {{
+        normaliseGlb(gltf.scene, d.z_up_to_y_up);
+        rec.content = gltf.scene;
+        rec.scene.add(rec.content);
+      }});
+    }}
+  }}
+
+  function loadSample(sha) {{
+    var s = DATA.samples[sha];
+    buildCells(s.panels);
+    s.panels.forEach(function(p, i) {{
+      loadPanel(i, p.data);
+      var cap = document.getElementById('cap-' + i);
+      if (cap) cap.textContent = p.caption || '';
+    }});
+    info.textContent = s.info || '';
+  }}
+
+  sel.addEventListener('change', function() {{ loadSample(sel.value); }});
+  loadSample(sel.value);
+}})();
+</script>
+</body></html>"""
+
+
+def render_html(
+    samples: list[dict],
+    title: str,
+    out_path: str,
+    point_size: float = 0.008,
+) -> None:
+    """Write the complete HTML file.
+
+    ``samples`` is a list of per-sample dicts with the structure:
+      {"sha": str, "info": str, "panels": [{"kind": str, "data": dict,
+                                             "caption": str, "label": str}, ...]}
+    """
+    data_blob = json.dumps(
+        {"samples": {s["sha"]: s for s in samples}},
+        separators=(",", ":"),
+    )
+    sample_options = "".join(
+        f'<option value="{s["sha"]}">[{i}] {s["sha"][:14]}</option>'
+        for i, s in enumerate(samples)
+    )
+    html = _HTML_TEMPLATE.format(
+        title=title,
+        sample_options=sample_options,
+        data_json=data_blob,
+        point_size=point_size,
+    )
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    with open(out_path, "w") as f:
+        f.write(html)
+    print(f"Saved: {out_path}  ({len(html) / 1e6:.1f} MB)")
