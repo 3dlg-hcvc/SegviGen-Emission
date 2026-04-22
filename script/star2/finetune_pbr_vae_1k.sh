@@ -1,10 +1,14 @@
 #!/bin/bash
-# Launch emission PBR VAE channel-hijack finetune (full 1k subset) on star2.
+# Launch emission PBR VAE channel-hijack finetune (full 1k subset) on star2 cs-venus-18.
 #
 # Config: configs/scvae/emission_pbr_vae_finetune_1k.yaml
 # Trainer: EmissionPbrFinetuneTrainer (channel-hijack of pretrained PBR VAE)
 # Data:   repo-relative `data/lightgen_1k/` (~1099 unique samples, real
 #         emission-filtered split — no oversampling needed at 4 GPUs * BS=8).
+#
+# cs-venus-18 is a theia-lab-owned L40S×4 node, but our 3dlg-hcvc-lab account can
+# reach it via the open `cs-gpu-research` partition (verified with sbatch --test-only).
+# Do NOT submit via theia-lab-* (not our lab). See CLAUDE.md cluster-access notes.
 #
 # Env vars:
 #   NUM_GPUS    number of GPUs (default 4 — matches the 10-sample sibling).
@@ -37,11 +41,13 @@ fi
 
 ssh star2 "sbatch" << EOF
 #!/bin/zsh
+#SBATCH --account=3dlg-hcvc-lab
+#SBATCH --partition=cs-gpu-research
 #SBATCH --gres=${GPU_GRES}
 #SBATCH --mem=$((64*NUM_GPUS))G
 #SBATCH --time=5-15:00
 #SBATCH --cpus-per-task=32
-#SBATCH --nodelist=cs-venus-15
+#SBATCH --nodelist=cs-venus-18
 #SBATCH --output=/localscratch/dya78/${NAME}.out
 #SBATCH -J ${NAME}
 
