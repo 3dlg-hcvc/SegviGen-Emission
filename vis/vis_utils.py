@@ -230,3 +230,86 @@ def compute_emission_l1(
             f"coord count mismatch: pred {pred_coords.shape[0]} vs gt {gt_coords.shape[0]}"
         )
     return float((pred_feats - gt_feats).abs().mean().item())
+
+
+# =============================================================================
+# Experiment resolution (run_dir or ckpt path → config + ckpt)
+# =============================================================================
+
+@dataclass
+class ExperimentHandle:
+    label: str
+    run_dir: str
+    config: dict
+    ckpt_path: str
+    trainer_name: str
+
+    @property
+    def data_root(self) -> str:
+        return self.config["dataset"]["args"]["data_root"]
+
+    @property
+    def resolution(self) -> int:
+        return int(self.config["dataset"]["args"].get("resolution", 256))
+
+
+_STEP_VAL_RE = re.compile(r"step(\d+)-(\d+\.\d+)\.ckpt$")
+
+
+def _pick_checkpoint(ckpt_dir: str) -> str:
+    """Apply the checkpoint-selection rule from the design spec:
+
+    1. If ckpt_dir/last.ckpt exists, use it.
+    2. Else, parse files matching ``step{N}-{val_loss:.4f}.ckpt`` and pick
+       the smallest val_loss.
+    3. Else, scan for any *.ckpt and pick the lexicographically latest, or
+       raise FileNotFoundError if none exist.
+    """
+    if not os.path.isdir(ckpt_dir):
+        raise FileNotFoundError(f"no ckpts/ dir at {ckpt_dir}")
+    last = os.path.join(ckpt_dir, "last.ckpt")
+    if os.path.exists(last):
+        return last
+    best = None
+    best_val = float("inf")
+    for f in os.listdir(ckpt_dir):
+        m = _STEP_VAL_RE.search(f)
+        if m:
+            v = float(m.group(2))
+            if v < best_val:
+                best_val = v
+                best = f
+    if best:
+        return os.path.join(ckpt_dir, best)
+    fallbacks = sorted(f for f in os.listdir(ckpt_dir) if f.endswith(".ckpt"))
+    if fallbacks:
+        return os.path.join(ckpt_dir, fallbacks[-1])
+    raise FileNotFoundError(f"no checkpoints found in {ckpt_dir}")
+
+
+def resolve_experiment(label: str, path: str) -> ExperimentHandle:
+    """Turn a run_dir or a .ckpt path into an ExperimentHandle."""
+    path = os.path.abspath(path)
+    if os.path.isdir(path):
+        run_dir = path
+        ckpt_path = _pick_checkpoint(os.path.join(run_dir, "ckpts"))
+    elif path.endswith(".ckpt") and os.path.exists(path):
+        run_dir = os.path.dirname(os.path.dirname(path))
+        ckpt_path = path
+    else:
+        raise FileNotFoundError(
+            f"experiment path {path!r} is neither a run_dir nor an existing .ckpt"
+        )
+    cfg_path = os.path.join(run_dir, "config.yaml")
+    if not os.path.exists(cfg_path):
+        raise FileNotFoundError(f"no config.yaml at {cfg_path}")
+    with open(cfg_path) as f:
+        config = yaml.safe_load(f)
+    trainer_name = config.get("trainer", {}).get("name", "<unknown>")
+    return ExperimentHandle(
+        label=label,
+        run_dir=run_dir,
+        config=config,
+        ckpt_path=ckpt_path,
+        trainer_name=trainer_name,
+    )

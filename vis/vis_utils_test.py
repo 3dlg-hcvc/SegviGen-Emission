@@ -90,6 +90,34 @@ def test_compute_emission_l1_zero_for_equal_inputs():
     assert compute_emission_l1(coords, feats, coords, feats) == 0.0
 
 
+def test_resolve_experiment_run_dir():
+    from vis.vis_utils import resolve_experiment
+    # Any existing run dir works — pick the overfit one that's been around longest.
+    run_dir = os.path.join(os.path.dirname(__file__), "..", "outputs", "emission_vae_10sample_overfit")
+    if not os.path.isdir(run_dir):
+        print("skip: run_dir missing")
+        return
+    h = resolve_experiment("vae", run_dir)
+    assert h.label == "vae"
+    assert os.path.exists(h.ckpt_path), h.ckpt_path
+    assert h.trainer_name in ("EmissionVaeTrainer", "EmissionPbrFinetuneTrainer"), h.trainer_name
+
+
+def test_resolve_experiment_ckpt_file():
+    from vis.vis_utils import resolve_experiment
+    run_dir = os.path.join(os.path.dirname(__file__), "..", "outputs", "emission_vae_10sample_overfit")
+    if not os.path.isdir(run_dir):
+        print("skip: run_dir missing")
+        return
+    ckpt = os.path.join(run_dir, "ckpts", "last.ckpt")
+    if not os.path.exists(ckpt):
+        print("skip: last.ckpt missing")
+        return
+    h = resolve_experiment("vae", ckpt)
+    assert h.ckpt_path == os.path.abspath(ckpt)
+    assert h.run_dir == os.path.abspath(run_dir)
+
+
 if __name__ == "__main__":
     test_load_samples_from_parquet_first_3()
     print("ok: parquet first:3")
@@ -103,4 +131,8 @@ if __name__ == "__main__":
     print("ok: emission_to_srgb_u8")
     test_compute_emission_l1_zero_for_equal_inputs()
     print("ok: compute_emission_l1 zero")
+    test_resolve_experiment_run_dir()
+    print("ok: resolve_experiment run_dir")
+    test_resolve_experiment_ckpt_file()
+    print("ok: resolve_experiment ckpt file")
     print("all passed")
