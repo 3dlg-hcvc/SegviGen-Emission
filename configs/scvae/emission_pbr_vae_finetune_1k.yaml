@@ -114,8 +114,15 @@ dataset:
 trainer:
   name: EmissionPbrFinetuneTrainer
   args:
+    # Mirror the 10-sample sibling (emission_pbr_vae_finetune_10sample.yaml)
+    # for all hyperparams. Only dataset.args and max_steps differ: 1k has
+    # ~100x more unique samples, so budget 20k steps (~740 epochs at 27
+    # batches/epoch) instead of the 6k used for the 10-sample overfit.
     max_steps: 20000
-    batch_size_per_gpu: 16
+    # BS=8 matches the 10-sample setup (reduced from 16 for L40S VRAM headroom
+    # after BalancedResumableSampler rotation; see CLAUDE.md "Load balancing
+    # across DDP ranks").
+    batch_size_per_gpu: 8
     batch_split: 1
     optimizer:
       name: AdamW
@@ -137,9 +144,10 @@ trainer:
     finetune_ckpt:
       encoder: microsoft/TRELLIS.2-4B/ckpts/tex_enc_next_dc_f16c32_fp16
       decoder: microsoft/TRELLIS.2-4B/ckpts/tex_dec_next_dc_f16c32_fp16
-    # 4 GPU * BS=8 = global 32, ~878 train samples -> 27 train batches/epoch.
-    # i_log=1 keeps wandb / CSV in sync with the 10sample sibling for direct
-    # apples-to-apples comparison; bump if dashboard load becomes an issue.
+    # 4 GPU * BS=8 = global 32, ~878 train samples -> 27 train batches/epoch
+    # (drop_last drops up to 31 samples, ~1.6% of the split).
+    # i_log=1 matches the 10sample sibling for direct apples-to-apples wandb
+    # comparison; bump if dashboard load becomes an issue.
     i_log: 1
     i_sample: 2000
     # Checkpoint policy: keep the top-3 checkpoints by val/loss (plus last.ckpt
@@ -149,20 +157,21 @@ trainer:
     monitor_metric: val/loss
     monitor_mode: min
     dataloader_num_workers: 16
-    use_balanced_sampler: false
-    # Validation on the held-out val split. Frequency: 4 GPU * BS=8 ->
-    # 27 train batches/epoch, val_every_epochs=100 fires every ~2700 steps ->
-    # ~7 well-spaced top-K comparisons over a 20k-step run (EMA at 0.9999 damps
-    # remaining oscillation between snapshots). Tighten by overriding from the
-    # launcher if you want denser comparisons on a longer run.
+    # Balanced sampler matches the 10sample sibling. LightGenSLatEmission
+    # exposes self.loads, so per-rank memory stays equal across the ~100x
+    # per-sample voxel-count variance in the sparse split.
+    use_balanced_sampler: true
+    # Validation on the held-out val split. Frequency mirrors the 10sample
+    # sibling (val_every_epochs=5). 27 train batches/epoch -> validate every
+    # ~135 steps -> ~148 top-K comparisons over the 20k-step run (EMA at
+    # 0.9999 damps residual oscillation between snapshots).
     val_split_name: val
-    val_batch_size_per_gpu: 16
-    val_every_epochs: 100
+    val_batch_size_per_gpu: 8
+    val_every_epochs: 5
     num_sanity_val_steps: 0
     # Wandb is mandatory for all training runs (see CLAUDE.md "Run logging
     # policy"). Override `wandb_name` per-run via --override or env var so each
-    # submission gets its own row in the dashboard (the launcher appends a
-    # date+time tag).
+    # submission gets its own row in the dashboard.
     wandb_enable: true
     wandb_project: emission-pbr-vae-finetune
     wandb_name: emission_pbr_vae_ft_1k
