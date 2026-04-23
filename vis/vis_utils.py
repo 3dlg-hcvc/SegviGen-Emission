@@ -656,30 +656,6 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
         miss.textContent = 'GLB load failed';
         rec.pane.appendChild(miss);
       }});
-    }} else if (rec.kind === 'overlay') {{
-      // Debug overlay: voxels + GLB in the same scene, same transform chain.
-      // If they don't align here, the frame computation is wrong.
-      var group = new THREE.Group();
-      group.add(buildPointCloud(d.voxel));
-      rec.content = group;
-      rec.scene.add(group);
-      if (d.glb && d.glb.url) {{
-        new THREE.GLTFLoader().load(d.glb.url, function(gltf) {{
-          var mesh = normaliseGlb(gltf.scene, d.glb.z_up_to_y_up);
-          // Make GLB translucent so overlapping voxels remain visible.
-          mesh.traverse(function(o) {{
-            if (o.isMesh && o.material) {{
-              o.material = o.material.clone();
-              o.material.transparent = true;
-              o.material.opacity = 0.55;
-              o.material.depthWrite = false;
-            }}
-          }});
-          group.add(mesh);
-        }}, undefined, function(err) {{
-          console.error('Overlay GLB load failed:', err);
-        }});
-      }}
     }}
   }}
 
