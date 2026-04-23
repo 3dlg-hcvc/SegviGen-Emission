@@ -114,7 +114,7 @@ dataset:
 trainer:
   name: EmissionPbrFinetuneTrainer
   args:
-    max_steps: 6000
+    max_steps: 20000
     # BS=16 pushed L40S VRAM to ~44/45 GB per rank even with BalancedResumable-
     # Sampler; OOM on rotation (see CLAUDE.md "Load balancing across DDP ranks").
     # BS=8 leaves ~50% headroom for autograd checkpoint recomputation + triton
