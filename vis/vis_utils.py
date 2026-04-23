@@ -550,12 +550,14 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
     var pos = new Float32Array(n * 3);
     var col = new Float32Array(n * 3);
     for (var i = 0; i < n; i++) {{
-      // voxel_i / res - 0.5 + 0.5/res, then Y/Z swap to Three.js Y-up.
+      // voxel_i / res - 0.5 + 0.5/res in mesh Z-up space, then +90° around X
+      // (proper rotation: (x, y, z) -> (x, -z, y)) to reach Three.js Y-up —
+      // identical to the root.rotation.x = pi/2 applied to the GLB panel.
       var x = xyz[i*3]   * inv - half + offset;
       var y = xyz[i*3+1] * inv - half + offset;
       var z = xyz[i*3+2] * inv - half + offset;
       pos[i*3]   = x;
-      pos[i*3+1] = z;
+      pos[i*3+1] = -z;
       pos[i*3+2] = y;
       col[i*3]   = rgb[i*3]   / 255;
       col[i*3+1] = rgb[i*3+1] / 255;
@@ -568,44 +570,34 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
     return new THREE.Points(geom, mat);
   }}
 
-  // Normalise a GLB mesh to [-0.5, 0.5]^3 using the same bbox/scale rule as
-  // data_toolkit/voxelize_pbr.py. Optionally apply Blender-Z-up → Y-up first.
+  // Normalise a GLB to world-space [-0.5, 0.5]^3 using the same bbox/scale
+  // rule as data_toolkit/voxelize_pbr.py. Applied as root transforms so we
+  // don't have to care about parent-node matrices (which per-vertex edits
+  // would silently get wrong).
   function normaliseGlb(root, zUpToYUp) {{
     if (zUpToYUp) {{
-      // +90° around X: (x, y, z) → (x, z, -y). Applied to each mesh vertex.
-      root.traverse(function(o) {{
-        if (o.isMesh && o.geometry && o.geometry.attributes.position) {{
-          var p = o.geometry.attributes.position.array;
-          for (var i = 0; i < p.length; i += 3) {{
-            var y = p[i+1], z = p[i+2];
-            p[i+1] = z;
-            p[i+2] = -y;
-          }}
-          o.geometry.attributes.position.needsUpdate = true;
-          o.geometry.computeBoundingBox();
-        }}
-      }});
+      // Apply the Blender-Z-up → Y-up rotation as a container transform so
+      // the world bbox below reflects the rotated mesh.
+      var container = new THREE.Group();
+      container.rotation.x = -Math.PI / 2;
+      container.add(root);
+      root = container;
     }}
+    root.updateMatrixWorld(true);
     var box = new THREE.Box3().setFromObject(root);
     var mn = box.min, mx = box.max;
     var cx = (mn.x + mx.x) * 0.5, cy = (mn.y + mx.y) * 0.5, cz = (mn.z + mx.z) * 0.5;
     var s = 0.99999 / Math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
-    root.traverse(function(o) {{
-      if (o.isMesh && o.geometry && o.geometry.attributes.position) {{
-        var p = o.geometry.attributes.position.array;
-        for (var i = 0; i < p.length; i += 3) {{
-          p[i]   = (p[i]   - cx) * s;
-          p[i+1] = (p[i+1] - cy) * s;
-          p[i+2] = (p[i+2] - cz) * s;
-        }}
-        o.geometry.attributes.position.needsUpdate = true;
-        o.geometry.computeBoundingBox();
-      }}
-    }});
-    // Voxel pipeline writes Y-up coords then we apply Y/Z swap at upload. For
-    // the GLB to land in the same viewer-space, apply the same swap on the
-    // mesh root after normalisation.
-    root.rotation.set(Math.PI / 2, 0, 0);
+    // World-space centering + uniform scale: wraps the mesh in a container
+    // whose transform takes world pos p to (p - c) * s.
+    var outer = new THREE.Group();
+    root.position.set(-cx, -cy, -cz);
+    outer.scale.setScalar(s);
+    outer.add(root);
+    // Then +90° around X (proper rotation (x, y, z) -> (x, -z, y)) so the
+    // mesh lands in the same Three.js frame as the voxel panels.
+    outer.rotation.x = Math.PI / 2;
+    return outer;
   }}
 
   function loadPanel(pIdx, d) {{
@@ -629,8 +621,7 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
         return;
       }}
       new THREE.GLTFLoader().load(d.url, function(gltf) {{
-        normaliseGlb(gltf.scene, d.z_up_to_y_up);
-        rec.content = gltf.scene;
+        rec.content = normaliseGlb(gltf.scene, d.z_up_to_y_up);
         rec.scene.add(rec.content);
       }});
     }}
