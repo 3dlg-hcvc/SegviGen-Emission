@@ -572,34 +572,29 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
   }}
 
   function buildPointCloud(d) {{
-    // Render each voxel as an instanced cube of exact cell size (1/res) so its
-    // spatial extent matches the voxelizer's grid cells — eliminates the
-    // point-sprite size ambiguity that made emission appear to "bleed" past
-    // the mesh bbox. Voxel coords are Z-up; GLB is Y-up; rotate -90° X:
-    // (x, y, z) -> (x, z, -y).
     var n = d.n, xyz = d.xyz, rgb = d.rgb, res = d.res;
     var inv = 1.0 / res;
     var half = 0.5;
     var offset = half * inv;
-    var cell = inv * 0.9;  // leave a tiny gap between adjacent cells
-    var geom = new THREE.BoxGeometry(cell, cell, cell);
-    var mat = new THREE.MeshStandardMaterial({{ vertexColors: false, roughness: 0.6, metalness: 0.0 }});
-    var mesh = new THREE.InstancedMesh(geom, mat, n);
-    var dummy = new THREE.Object3D();
-    var color = new THREE.Color();
+    var pos = new Float32Array(n * 3);
+    var col = new Float32Array(n * 3);
     for (var i = 0; i < n; i++) {{
+      // Voxels are Z-up; GLB is Y-up. Rotate -90° around X: (x,y,z) → (x,z,-y).
       var x = xyz[i*3]   * inv - half + offset;
       var y = xyz[i*3+1] * inv - half + offset;
       var z = xyz[i*3+2] * inv - half + offset;
-      dummy.position.set(x, z, -y);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      color.setRGB(rgb[i*3] / 255, rgb[i*3+1] / 255, rgb[i*3+2] / 255);
-      mesh.setColorAt(i, color);
+      pos[i*3]   = x;
+      pos[i*3+1] = z;
+      pos[i*3+2] = -y;
+      col[i*3]   = rgb[i*3]   / 255;
+      col[i*3+1] = rgb[i*3+1] / 255;
+      col[i*3+2] = rgb[i*3+2] / 255;
     }}
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    return mesh;
+    var geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geom.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+    var mat = new THREE.PointsMaterial({{ size: POINT_SIZE, vertexColors: true, sizeAttenuation: true }});
+    return new THREE.Points(geom, mat);
   }}
 
   // Normalise a GLB to world-space [-0.5, 0.5]^3 using the same bbox/scale
@@ -612,19 +607,19 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
       var Rzy = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
       root.applyMatrix4(Rzy);
     }}
-    root.updateMatrixWorld(true);
-    // Compute bbox from mesh vertices only (ignore lights/cameras/empty helpers
-    // that setFromObject would otherwise include). The voxelizer works from
-    // raw mesh vertices via data_toolkit/voxelize_pbr.py — matching that here
-    // keeps GLB and voxels at identical scale.
+    // Match the voxelizer's bbox exactly: it reads raw vertex arrays from the
+    // blender_dump (np.concatenate of obj['vertices']) WITHOUT applying node
+    // transforms. Use local vertex positions (no matrixWorld) so the GLB
+    // inherits the same bbox the voxelizer used — otherwise GLTFLoader node
+    // transforms can inflate/deflate the world bbox and scale the GLB
+    // differently than the voxels.
     var box = new THREE.Box3();
     var v = new THREE.Vector3();
     root.traverse(function(o) {{
       if (o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {{
         var arr = o.geometry.attributes.position.array;
-        o.updateMatrixWorld(true);
         for (var i = 0; i < arr.length; i += 3) {{
-          v.set(arr[i], arr[i+1], arr[i+2]).applyMatrix4(o.matrixWorld);
+          v.set(arr[i], arr[i+1], arr[i+2]);
           box.expandByPoint(v);
         }}
       }}
@@ -632,6 +627,7 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
     var mn = box.min, mx = box.max;
     var cx = (mn.x + mx.x) * 0.5, cy = (mn.y + mx.y) * 0.5, cz = (mn.z + mx.z) * 0.5;
     var s = 0.99999 / Math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
+    console.log('GLB bbox local:', mn.toArray(), mx.toArray(), 'scale:', s);
     // Compose (world - c) * s as a single matrix: S * T. applyMatrix4
     // pre-multiplies, so after the call root.matrix transforms its vertices'
     // world positions by S*T. GLBs are native Y-up (per GLB spec), and the
