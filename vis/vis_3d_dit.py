@@ -164,7 +164,8 @@ def main():
     ap.add_argument("--experiment", action="append", required=True,
                     help="repeatable name=dit_path:vae_path")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--threshold", type=float, default=0.005)
+    ap.add_argument("--threshold", type=float, default=0.05,
+                    help="min emission magnitude to render (filters near-black voxels)")
     ap.add_argument("--max_points", type=int, default=60000)
     ap.add_argument("--point_size", type=float, default=0.012)
     ap.add_argument("--steps", type=int, default=50)
