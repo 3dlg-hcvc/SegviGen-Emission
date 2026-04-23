@@ -102,7 +102,9 @@ def main():
     ap.add_argument("--threshold", type=float, default=0.005,
                     help="min emission magnitude to render")
     ap.add_argument("--max_points", type=int, default=80000)
-    ap.add_argument("--point_size", type=float, default=0.012)
+    ap.add_argument("--point_size", type=float, default=0.004,
+                    help="Three.js point sprite size; set near 1/res (~0.004 at res=256) "
+                         "so voxel points don't visibly bleed past the mesh bbox.")
     args = ap.parse_args()
 
     experiments: list[ExperimentHandle] = [
