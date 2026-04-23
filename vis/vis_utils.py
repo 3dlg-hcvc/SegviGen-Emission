@@ -575,11 +575,13 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
     var n = d.n, xyz = d.xyz, rgb = d.rgb, res = d.res;
     var inv = 1.0 / res;
     var half = 0.5;
-    var offset = half * inv;
+    var offset = half * inv;  // voxel-cell-center offset
     var pos = new Float32Array(n * 3);
     var col = new Float32Array(n * 3);
     for (var i = 0; i < n; i++) {{
-      // Voxels are Z-up; GLB is Y-up. Rotate -90° around X: (x,y,z) → (x,z,-y).
+      // Voxels are Z-up (the dataset was voxelized without the pbr_y_up flag);
+      // GLB is Y-up (GLB spec). Rotate voxel -90° around X to reach Y-up:
+      // (x, y, z) -> (x, z, -y) — canonical Z-up → Y-up.
       var x = xyz[i*3]   * inv - half + offset;
       var y = xyz[i*3+1] * inv - half + offset;
       var z = xyz[i*3+2] * inv - half + offset;
@@ -607,43 +609,11 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
       var Rzy = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
       root.applyMatrix4(Rzy);
     }}
-    // Bake existing node transforms into each mesh's geometry, then reset the
-    // node transforms to identity. This flattens the hierarchy so bbox and
-    // normalization can all be done in one consistent frame — matching the
-    // voxelizer, which also works from post-bake dump vertices.
     root.updateMatrixWorld(true);
-    root.traverse(function(o) {{
-      if (o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {{
-        var mw = o.matrixWorld.clone();
-        o.geometry = o.geometry.clone();
-        o.geometry.applyMatrix4(mw);
-        o.position.set(0, 0, 0);
-        o.quaternion.identity();
-        o.scale.set(1, 1, 1);
-        o.updateMatrix();
-      }}
-    }});
-    root.position.set(0, 0, 0);
-    root.quaternion.identity();
-    root.scale.set(1, 1, 1);
-    root.updateMatrix();
-
-    // Now compute bbox from the baked-world vertices (all in one flat frame).
-    var box = new THREE.Box3();
-    var v = new THREE.Vector3();
-    root.traverse(function(o) {{
-      if (o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {{
-        var arr = o.geometry.attributes.position.array;
-        for (var i = 0; i < arr.length; i += 3) {{
-          v.set(arr[i], arr[i+1], arr[i+2]);
-          box.expandByPoint(v);
-        }}
-      }}
-    }});
+    var box = new THREE.Box3().setFromObject(root);
     var mn = box.min, mx = box.max;
     var cx = (mn.x + mx.x) * 0.5, cy = (mn.y + mx.y) * 0.5, cz = (mn.z + mx.z) * 0.5;
     var s = 0.99999 / Math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
-    console.log('GLB bbox (baked):', mn.toArray(), mx.toArray(), 'center:', [cx, cy, cz], 'scale:', s);
     // Compose (world - c) * s as a single matrix: S * T. applyMatrix4
     // pre-multiplies, so after the call root.matrix transforms its vertices'
     // world positions by S*T. GLBs are native Y-up (per GLB spec), and the
@@ -686,6 +656,30 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
         miss.textContent = 'GLB load failed';
         rec.pane.appendChild(miss);
       }});
+    }} else if (rec.kind === 'overlay') {{
+      // Debug overlay: voxels + GLB in the same scene, same transform chain.
+      // If they don't align here, the frame computation is wrong.
+      var group = new THREE.Group();
+      group.add(buildPointCloud(d.voxel));
+      rec.content = group;
+      rec.scene.add(group);
+      if (d.glb && d.glb.url) {{
+        new THREE.GLTFLoader().load(d.glb.url, function(gltf) {{
+          var mesh = normaliseGlb(gltf.scene, d.glb.z_up_to_y_up);
+          // Make GLB translucent so overlapping voxels remain visible.
+          mesh.traverse(function(o) {{
+            if (o.isMesh && o.material) {{
+              o.material = o.material.clone();
+              o.material.transparent = true;
+              o.material.opacity = 0.55;
+              o.material.depthWrite = false;
+            }}
+          }});
+          group.add(mesh);
+        }}, undefined, function(err) {{
+          console.error('Overlay GLB load failed:', err);
+        }});
+      }}
     }}
   }}
 

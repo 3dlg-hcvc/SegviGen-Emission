@@ -96,13 +96,16 @@ def main():
     ap.add_argument("--embed_glb", action="store_true",
                     help="inline each GLB as a base64 data URL (makes HTML self-contained but huge; "
                          "useful for small datasets or when file:// serving is needed)")
+    ap.add_argument("--overlay", action="store_true",
+                    help="add a debug panel per sample that overlays GT emission voxels on the GLB "
+                         "(GLB rendered translucent) — use to diagnose alignment issues directly")
     ap.add_argument("--experiment", action="append", default=[],
                     help="repeatable name=run_dir_or_ckpt")
     ap.add_argument("--out", required=True, help="output HTML path")
     ap.add_argument("--threshold", type=float, default=0.005,
                     help="min emission magnitude to render")
     ap.add_argument("--max_points", type=int, default=80000)
-    ap.add_argument("--point_size", type=float, default=0.008)
+    ap.add_argument("--point_size", type=float, default=0.012)
     args = ap.parse_args()
 
     experiments: list[ExperimentHandle] = [
@@ -171,6 +174,22 @@ def main():
                 "label": h.label,
             })
             torch.cuda.empty_cache()
+        if args.overlay:
+            panels.append({
+                "kind": "overlay",
+                "data": {
+                    "voxel": make_voxel_panel_data(
+                        coords, emit, res, args.threshold, args.max_points,
+                    ),
+                    "glb": make_glb_panel_data(
+                        glb_url,
+                        z_up_to_y_up=False,
+                        embed_path=rec.glb_path if (args.embed_glb and rec.glb_path) else None,
+                    ),
+                },
+                "caption": "overlay (GT voxels + GLB @ 55% opacity)",
+                "label": "overlay",
+            })
         samples_out.append({
             "sha": rec.sha,
             "info": f"{coords.shape[0]:,} voxels",
