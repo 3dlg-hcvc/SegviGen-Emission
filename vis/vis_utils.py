@@ -607,12 +607,28 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
       var Rzy = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
       root.applyMatrix4(Rzy);
     }}
-    // Match the voxelizer's bbox exactly: it reads raw vertex arrays from the
-    // blender_dump (np.concatenate of obj['vertices']) WITHOUT applying node
-    // transforms. Use local vertex positions (no matrixWorld) so the GLB
-    // inherits the same bbox the voxelizer used — otherwise GLTFLoader node
-    // transforms can inflate/deflate the world bbox and scale the GLB
-    // differently than the voxels.
+    // Bake existing node transforms into each mesh's geometry, then reset the
+    // node transforms to identity. This flattens the hierarchy so bbox and
+    // normalization can all be done in one consistent frame — matching the
+    // voxelizer, which also works from post-bake dump vertices.
+    root.updateMatrixWorld(true);
+    root.traverse(function(o) {{
+      if (o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {{
+        var mw = o.matrixWorld.clone();
+        o.geometry = o.geometry.clone();
+        o.geometry.applyMatrix4(mw);
+        o.position.set(0, 0, 0);
+        o.quaternion.identity();
+        o.scale.set(1, 1, 1);
+        o.updateMatrix();
+      }}
+    }});
+    root.position.set(0, 0, 0);
+    root.quaternion.identity();
+    root.scale.set(1, 1, 1);
+    root.updateMatrix();
+
+    // Now compute bbox from the baked-world vertices (all in one flat frame).
     var box = new THREE.Box3();
     var v = new THREE.Vector3();
     root.traverse(function(o) {{
@@ -627,7 +643,7 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
     var mn = box.min, mx = box.max;
     var cx = (mn.x + mx.x) * 0.5, cy = (mn.y + mx.y) * 0.5, cz = (mn.z + mx.z) * 0.5;
     var s = 0.99999 / Math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
-    console.log('GLB bbox local:', mn.toArray(), mx.toArray(), 'scale:', s);
+    console.log('GLB bbox (baked):', mn.toArray(), mx.toArray(), 'center:', [cx, cy, cz], 'scale:', s);
     // Compose (world - c) * s as a single matrix: S * T. applyMatrix4
     // pre-multiplies, so after the call root.matrix transforms its vertices'
     // world positions by S*T. GLBs are native Y-up (per GLB spec), and the
