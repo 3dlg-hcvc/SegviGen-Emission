@@ -99,7 +99,7 @@ def main():
     ap.add_argument("--experiment", action="append", default=[],
                     help="repeatable name=run_dir_or_ckpt")
     ap.add_argument("--out", required=True, help="output HTML path")
-    ap.add_argument("--threshold", type=float, default=0.05,
+    ap.add_argument("--threshold", type=float, default=0.001,
                     help="min emission magnitude to render (filters near-black voxels)")
     ap.add_argument("--max_points", type=int, default=80000)
     ap.add_argument("--point_size", type=float, default=0.012)
