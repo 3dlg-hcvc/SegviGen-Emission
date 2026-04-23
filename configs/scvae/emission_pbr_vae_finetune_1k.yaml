@@ -118,7 +118,7 @@ trainer:
     # for all hyperparams. Only dataset.args and max_steps differ: 1k has
     # ~100x more unique samples, so budget 20k steps (~740 epochs at 27
     # batches/epoch) instead of the 6k used for the 10-sample overfit.
-    max_steps: 20000
+    max_steps: 40000
     # BS=8 matches the 10-sample setup (reduced from 16 for L40S VRAM headroom
     # after BalancedResumableSampler rotation; see CLAUDE.md "Load balancing
     # across DDP ranks").

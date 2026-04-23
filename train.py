@@ -421,6 +421,11 @@ def build_trainer(
         if monitor_mode not in ("min", "max"):
             raise ValueError(f"monitor_mode must be 'min' or 'max', got {monitor_mode!r}")
         filename = "step{step:07d}-{" + monitor_metric + ":.4f}"
+        # every_n_train_steps=1 forces _defer_save_until_validation on every
+        # step; the deferred branch in ModelCheckpoint.on_validation_end then
+        # calls _save_last_checkpoint unconditionally each val. Without this,
+        # last.ckpt only refreshes when a top-k save fires (val improves), so
+        # once val plateaus last.ckpt stays frozen at the last best-val step.
         checkpoint_cb = ModelCheckpoint(
             dirpath=ckpt_dir,
             filename=filename,
@@ -428,6 +433,7 @@ def build_trainer(
             mode=monitor_mode,
             save_top_k=int(save_top_k_cfg),
             save_last=True,
+            every_n_train_steps=1,
             auto_insert_metric_name=False,
         )
     else:
