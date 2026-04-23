@@ -90,33 +90,68 @@ def _build_dino(dino_args):
 
 
 def _build_vae_decoder_from_latent(vae_handle):
-    """Build the VAE decoder alone and return a callable
-    ``decode_from_latent(z_dit_raw, z_pbr_raw) -> [N, 3] cpu tensor`` that
-    branches on the VAE trainer family. Loaded once per experiment.
+    """Build the VAE encoder+decoder and return a callable
+    ``decode_from_latent(x_gt, z_dit_raw, z_pbr_raw) -> [N, 3] cpu tensor``.
+
+    The encoder is needed to prime the decoder's subdivision cache (the sparse
+    spatial2channel/channel2spatial ops pair encode→decode state). Legacy:
+    see vis/legacy/vis_3d_emission_dit.py:191 (``z_enc = enc(x_gt)``).
     """
     from trellis2.trainers.builders import build_models
     models = build_models(vae_handle.config["models"])
+    enc = models["encoder"]
     dec = models["decoder"]
     state = torch.load(vae_handle.ckpt_path, map_location="cpu", weights_only=False)["state_dict"]
+    enc.load_state_dict({
+        k.removeprefix("models.encoder."): v for k, v in state.items()
+        if k.startswith("models.encoder.")
+    })
     dec.load_state_dict({
         k.removeprefix("models.decoder."): v for k, v in state.items()
         if k.startswith("models.decoder.")
     })
+    enc.to(DEVICE).eval()
     dec.to(DEVICE).eval()
 
     trainer = vae_handle.trainer_name
     if trainer == "EmissionVaeTrainer":
         @torch.no_grad()
-        def decode_from_latent(z_dit_raw, z_pbr_raw):
-            z_joint = z_dit_raw.replace(torch.cat([z_dit_raw.feats, z_pbr_raw.feats.to(DEVICE)], dim=-1))
+        def decode_from_latent(x_gt, z_dit_raw, z_pbr_raw):
+            z_enc = enc(x_gt)  # primes subdivision cache
+            z_joint = z_enc.replace(
+                torch.cat([z_dit_raw.feats, z_pbr_raw.feats.to(DEVICE)], dim=-1)
+            )
             return dec(z_joint).to("cpu").feats
     elif trainer == "EmissionPbrFinetuneTrainer":
         @torch.no_grad()
-        def decode_from_latent(z_dit_raw, z_pbr_raw):
-            return dec(z_dit_raw).to("cpu").feats[:, :3]
+        def decode_from_latent(x_gt, z_dit_raw, z_pbr_raw):
+            # Channel-hijack trainer encodes emission-as-PBR; prime with the
+            # same packed input the trainer uses.
+            from trellis2.modules import sparse as sp
+            packed = _pack_emission_as_pbr(x_gt.feats)
+            bc = torch.zeros(x_gt.coords.shape[0], 1, dtype=x_gt.coords.dtype, device=x_gt.coords.device)
+            x_packed = sp.SparseTensor(packed, x_gt.coords).to(DEVICE) if x_gt.coords.shape[1] == 4 else \
+                       sp.SparseTensor(packed, torch.cat([bc, x_gt.coords], dim=-1)).to(DEVICE)
+            z_enc = enc(x_packed)  # primes cache
+            z_sub = z_enc.replace(z_dit_raw.feats)
+            return dec(z_sub).to("cpu").feats[:, :3]
     else:
         raise RuntimeError(f"unsupported VAE trainer for DiT decode: {trainer!r}")
     return decode_from_latent
+
+
+_PBR_PAD_METALLIC = -1.0
+_PBR_PAD_ROUGHNESS = 1.0
+_PBR_PAD_ALPHA = 1.0
+
+
+def _pack_emission_as_pbr(feats: torch.Tensor) -> torch.Tensor:
+    n = feats.shape[0]
+    pad = torch.tensor(
+        [[_PBR_PAD_METALLIC, _PBR_PAD_ROUGHNESS, _PBR_PAD_ALPHA]],
+        device=feats.device, dtype=feats.dtype,
+    ).expand(n, -1)
+    return torch.cat([feats, pad], dim=-1)
 
 
 def main():
@@ -229,7 +264,11 @@ def main():
             z_dit_n = res_s.samples
             z_dit_raw = z_dit_n.replace(z_dit_n.feats * emit_std.to(DEVICE) + emit_mean.to(DEVICE))
 
-            pred = exp["decode_from_latent"](z_dit_raw, z_pbr_raw)
+            # Build a GT SparseTensor to prime the decoder's subdivision cache.
+            from trellis2.modules import sparse as sp
+            bc = torch.zeros(coords.shape[0], 1, dtype=coords.dtype)
+            x_gt = sp.SparseTensor(gt_emit, torch.cat([bc, coords], dim=-1)).to(DEVICE)
+            pred = exp["decode_from_latent"](x_gt, z_dit_raw, z_pbr_raw)
             l1 = compute_emission_l1(coords, pred, coords, gt_emit)
             panels.append({
                 "kind": "voxel",
