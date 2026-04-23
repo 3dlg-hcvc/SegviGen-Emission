@@ -47,6 +47,23 @@ def _parse_experiments(specs: list[str]) -> list[tuple[str, str]]:
     return out
 
 
+def _stage_glb(glb_path: str, assets_dir: str) -> str:
+    """Symlink ``glb_path`` into ``assets_dir`` and return the relative URL
+    (``assets/glbs/<basename>``) for use in the HTML. Using a subdirectory of
+    the HTML's output dir lets browsers load GLBs under file:// (they block
+    cross-directory ../ traversal but allow same-dir and subdir paths).
+    """
+    os.makedirs(assets_dir, exist_ok=True)
+    basename = os.path.basename(glb_path)
+    link_path = os.path.join(assets_dir, basename)
+    if not os.path.lexists(link_path):
+        os.symlink(os.path.abspath(glb_path), link_path)
+    # Relative URL from the HTML (assets_dir = <out_dir>/assets/glbs).
+    parent = os.path.dirname(assets_dir)  # <out_dir>/assets
+    assets_root = os.path.basename(parent)  # "assets"
+    return f"{assets_root}/{os.path.basename(assets_dir)}/{basename}"
+
+
 def _resolve_data_root(dataset_arg: str, experiments: list[ExperimentHandle], override: str | None) -> str:
     """Pick the data_root to use, in priority order:
     1. --data_root CLI override.
@@ -110,6 +127,7 @@ def main():
 
     out_abs = os.path.abspath(args.out)
     out_dir = os.path.dirname(out_abs)
+    glb_assets_dir = os.path.join(out_dir, "assets", "glbs")
 
     samples_out: list[dict] = []
     for rec in records:
@@ -119,12 +137,16 @@ def main():
         ) else None
 
         panels: list[dict] = []
-        # GLB panel (or placeholder)
-        glb_rel_url = os.path.relpath(rec.glb_path, out_dir) if rec.glb_path else None
+        # GLB panel (or placeholder). Symlink into <out_dir>/assets/glbs/ so
+        # browsers can load it under file:// without cross-directory issues.
+        if rec.glb_path and os.path.exists(rec.glb_path):
+            glb_url = _stage_glb(rec.glb_path, glb_assets_dir)
+        else:
+            glb_url = None
         panels.append({
             "kind": "glb",
             "data": make_glb_panel_data(
-                glb_rel_url,
+                glb_url,
                 z_up_to_y_up=False,
                 embed_path=rec.glb_path if (args.embed_glb and rec.glb_path) else None,
             ),

@@ -616,15 +616,13 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
     var s = 0.99999 / Math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
     // Compose (world - c) * s as a single matrix: S * T. applyMatrix4
     // pre-multiplies, so after the call root.matrix transforms its vertices'
-    // world positions by S*T.
+    // world positions by S*T. GLBs are native Y-up (per GLB spec), and the
+    // voxel-panel upload already rotates voxel Z-up → Y-up, so no further
+    // rotation is needed here to align the two.
     var T = new THREE.Matrix4().makeTranslation(-cx, -cy, -cz);
     var S = new THREE.Matrix4().makeScale(s, s, s);
     var M = new THREE.Matrix4().multiplyMatrices(S, T);
     root.applyMatrix4(M);
-    // Then +90° around X (proper rotation (x, y, z) -> (x, -z, y)) so the
-    // mesh lands in the same Three.js frame as the voxel panels.
-    var R = new THREE.Matrix4().makeRotationX(Math.PI / 2);
-    root.applyMatrix4(R);
     return root;
   }}
 
