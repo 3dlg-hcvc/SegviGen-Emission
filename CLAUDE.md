@@ -121,7 +121,7 @@ Gotcha: `nvidia-smi` via a second `srun --jobid=<id> --overlap` is scoped to the
 ## Data Paths
 
 - **Data root:** `data/lightgen_test/` — repo-relative path that works on every host. The 10-sample dataset (parquet, emission voxels, PBR voxels, latents, splits) lives here as real files. The `data/` directory is gitignored. To deploy on a new host, copy/rsync `data/lightgen_test/` along with the repo (e.g. `rsync -av data/ host:/path/to/repo/data/`).
-- **Visualization scripts:** `vis/` — all visualization scripts live here. Use these as templates for new visualizations.
+- **Visualization scripts:** `vis/` — unified 3D interactive: `vis/vis_3d_vae.py` (VAE reconstruction) and `vis/vis_3d_dit.py` (DiT → VAE decode). Both share helpers in `vis/vis_utils.py` and support `--experiment name=path` (repeatable) for side-by-side method comparison. Legacy per-case scripts live in `vis/legacy/` as reference. The 2D max-projection PNG scripts (`vis_emission_vae*.py`, `vis_vae_ckpt_comparison.py`, `compare_*.py`) remain at `vis/` root.
 - **Visualization output:** `visualizations/` — generated HTML/PNG files go here.
 - **Web publishing:** copy HTML visualizations to `/project/3dlg-hcvc/lightgen/www/` for browser access.
 
