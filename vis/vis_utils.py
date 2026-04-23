@@ -610,7 +610,22 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
       root.applyMatrix4(Rzy);
     }}
     root.updateMatrixWorld(true);
-    var box = new THREE.Box3().setFromObject(root);
+    // Compute bbox from mesh vertices only (ignore lights/cameras/empty helpers
+    // that setFromObject would otherwise include). The voxelizer works from
+    // raw mesh vertices via data_toolkit/voxelize_pbr.py — matching that here
+    // keeps GLB and voxels at identical scale.
+    var box = new THREE.Box3();
+    var v = new THREE.Vector3();
+    root.traverse(function(o) {{
+      if (o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {{
+        var arr = o.geometry.attributes.position.array;
+        o.updateMatrixWorld(true);
+        for (var i = 0; i < arr.length; i += 3) {{
+          v.set(arr[i], arr[i+1], arr[i+2]).applyMatrix4(o.matrixWorld);
+          box.expandByPoint(v);
+        }}
+      }}
+    }});
     var mn = box.min, mx = box.max;
     var cx = (mn.x + mx.x) * 0.5, cy = (mn.y + mx.y) * 0.5, cz = (mn.z + mx.z) * 0.5;
     var s = 0.99999 / Math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
