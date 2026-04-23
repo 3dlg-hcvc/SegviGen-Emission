@@ -572,31 +572,34 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
   }}
 
   function buildPointCloud(d) {{
+    // Render each voxel as an instanced cube of exact cell size (1/res) so its
+    // spatial extent matches the voxelizer's grid cells — eliminates the
+    // point-sprite size ambiguity that made emission appear to "bleed" past
+    // the mesh bbox. Voxel coords are Z-up; GLB is Y-up; rotate -90° X:
+    // (x, y, z) -> (x, z, -y).
     var n = d.n, xyz = d.xyz, rgb = d.rgb, res = d.res;
     var inv = 1.0 / res;
     var half = 0.5;
-    var offset = half * inv;  // voxel-cell-center offset
-    var pos = new Float32Array(n * 3);
-    var col = new Float32Array(n * 3);
+    var offset = half * inv;
+    var cell = inv * 0.9;  // leave a tiny gap between adjacent cells
+    var geom = new THREE.BoxGeometry(cell, cell, cell);
+    var mat = new THREE.MeshStandardMaterial({{ vertexColors: false, roughness: 0.6, metalness: 0.0 }});
+    var mesh = new THREE.InstancedMesh(geom, mat, n);
+    var dummy = new THREE.Object3D();
+    var color = new THREE.Color();
     for (var i = 0; i < n; i++) {{
-      // Voxels are Z-up (the dataset was voxelized without the pbr_y_up flag);
-      // GLB is Y-up (GLB spec). Rotate voxel -90° around X to reach Y-up:
-      // (x, y, z) -> (x, z, -y) — canonical Z-up → Y-up.
       var x = xyz[i*3]   * inv - half + offset;
       var y = xyz[i*3+1] * inv - half + offset;
       var z = xyz[i*3+2] * inv - half + offset;
-      pos[i*3]   = x;
-      pos[i*3+1] = z;
-      pos[i*3+2] = -y;
-      col[i*3]   = rgb[i*3]   / 255;
-      col[i*3+1] = rgb[i*3+1] / 255;
-      col[i*3+2] = rgb[i*3+2] / 255;
+      dummy.position.set(x, z, -y);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      color.setRGB(rgb[i*3] / 255, rgb[i*3+1] / 255, rgb[i*3+2] / 255);
+      mesh.setColorAt(i, color);
     }}
-    var geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geom.setAttribute('color',    new THREE.BufferAttribute(col, 3));
-    var mat = new THREE.PointsMaterial({{ size: POINT_SIZE, vertexColors: true, sizeAttenuation: true }});
-    return new THREE.Points(geom, mat);
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    return mesh;
   }}
 
   // Normalise a GLB to world-space [-0.5, 0.5]^3 using the same bbox/scale
