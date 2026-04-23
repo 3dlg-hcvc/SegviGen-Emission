@@ -579,15 +579,13 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
     var pos = new Float32Array(n * 3);
     var col = new Float32Array(n * 3);
     for (var i = 0; i < n; i++) {{
-      // voxel_i / res - 0.5 + 0.5/res in mesh Z-up space, then +90° around X
-      // (proper rotation: (x, y, z) -> (x, -z, y)) to reach Three.js Y-up —
-      // identical to the root.rotation.x = pi/2 applied to the GLB panel.
-      var x = xyz[i*3]   * inv - half + offset;
-      var y = xyz[i*3+1] * inv - half + offset;
-      var z = xyz[i*3+2] * inv - half + offset;
-      pos[i*3]   = x;
-      pos[i*3+1] = -z;
-      pos[i*3+2] = y;
+      // voxel coords live in the same Y-up mesh frame as the GLB (voxelize_pbr
+      // voxelizes the mesh vertices directly after its [-0.5, 0.5] bbox fit),
+      // so we upload them into Three.js Y-up without any axis swap/rotation —
+      // just the cell-centre offset on a [0, res) integer grid.
+      pos[i*3]   = xyz[i*3]   * inv - half + offset;
+      pos[i*3+1] = xyz[i*3+1] * inv - half + offset;
+      pos[i*3+2] = xyz[i*3+2] * inv - half + offset;
       col[i*3]   = rgb[i*3]   / 255;
       col[i*3+1] = rgb[i*3+1] / 255;
       col[i*3+2] = rgb[i*3+2] / 255;
