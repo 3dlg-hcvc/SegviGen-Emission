@@ -93,6 +93,10 @@ def main():
                     help="override data root; default = parent(--dataset) if it has emission_voxels_<res>/")
     ap.add_argument("--glb_root", default=None,
                     help="root for parquet's glb_1k_path; omit → GLB panel missing")
+    ap.add_argument("--roundtrip_glb_dir", default=None,
+                    help="directory of roundtrip GLBs generated from the same Blender dump the "
+                         "voxelizer used (filename pattern: <sha[:8]>_roundtrip.glb). When found, "
+                         "prefer these over --glb_root — they align exactly with voxels.")
     ap.add_argument("--embed_glb", action="store_true",
                     help="inline each GLB as a base64 data URL (makes HTML self-contained but huge; "
                          "useful for small datasets or when file:// serving is needed)")
@@ -140,12 +144,17 @@ def main():
         ) else None
 
         panels: list[dict] = []
-        # GLB panel (or placeholder). Symlink into <out_dir>/assets/glbs/ so
-        # browsers can load it under file:// without cross-directory issues.
-        if rec.glb_path and os.path.exists(rec.glb_path):
-            glb_url = _stage_glb(rec.glb_path, glb_assets_dir)
-        else:
-            glb_url = None
+        # GLB panel: prefer roundtrip GLB (same frame as voxels); fall back to
+        # the 1K GLB referenced by the parquet. Symlink the chosen source into
+        # <out_dir>/assets/glbs/ so browsers can load under file://.
+        chosen_glb = None
+        if args.roundtrip_glb_dir:
+            rt_path = os.path.join(args.roundtrip_glb_dir, f"{rec.sha[:8]}_roundtrip.glb")
+            if os.path.exists(rt_path):
+                chosen_glb = rt_path
+        if chosen_glb is None and rec.glb_path and os.path.exists(rec.glb_path):
+            chosen_glb = rec.glb_path
+        glb_url = _stage_glb(chosen_glb, glb_assets_dir) if chosen_glb else None
         panels.append({
             "kind": "glb",
             "data": make_glb_panel_data(
@@ -184,7 +193,7 @@ def main():
                     "glb": make_glb_panel_data(
                         glb_url,
                         z_up_to_y_up=False,
-                        embed_path=rec.glb_path if (args.embed_glb and rec.glb_path) else None,
+                        embed_path=chosen_glb if (args.embed_glb and chosen_glb) else None,
                     ),
                 },
                 "caption": "overlay (GT voxels + GLB @ 55% opacity)",
