@@ -76,6 +76,9 @@ def main():
                     help="override data root; default = parent(--dataset) if it has emission_voxels_<res>/")
     ap.add_argument("--glb_root", default=None,
                     help="root for parquet's glb_1k_path; omit → GLB panel missing")
+    ap.add_argument("--embed_glb", action="store_true",
+                    help="inline each GLB as a base64 data URL (makes HTML self-contained but huge; "
+                         "useful for small datasets or when file:// serving is needed)")
     ap.add_argument("--experiment", action="append", default=[],
                     help="repeatable name=run_dir_or_ckpt")
     ap.add_argument("--out", required=True, help="output HTML path")
@@ -120,7 +123,11 @@ def main():
         glb_rel_url = os.path.relpath(rec.glb_path, out_dir) if rec.glb_path else None
         panels.append({
             "kind": "glb",
-            "data": make_glb_panel_data(glb_rel_url, z_up_to_y_up=False),
+            "data": make_glb_panel_data(
+                glb_rel_url,
+                z_up_to_y_up=False,
+                embed_path=rec.glb_path if (args.embed_glb and rec.glb_path) else None,
+            ),
             "caption": "",
             "label": "GLB",
         })

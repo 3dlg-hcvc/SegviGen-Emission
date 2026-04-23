@@ -430,10 +430,32 @@ def make_voxel_panel_data(
     }
 
 
-def make_glb_panel_data(glb_path: Optional[str], z_up_to_y_up: bool) -> dict:
-    # We serve the GLB as a file:// URL relative to the HTML output path; the
-    # entry scripts resolve this to an absolute file URL at write time.
-    return {"url": glb_path, "z_up_to_y_up": bool(z_up_to_y_up)}
+def make_glb_panel_data(
+    glb_url: Optional[str],
+    z_up_to_y_up: bool,
+    embed_path: Optional[str] = None,
+) -> dict:
+    """Produce the GLB panel data blob.
+
+    ``glb_url`` is the URL used by the Three.js GLTFLoader — typically a path
+    relative to the HTML's serving root (e.g. ``../glbs/<sha>.glb`` for an
+    HTTP-served HTML). Use ``embed_path`` to inline the GLB file as a base64
+    data URL for small datasets where a self-contained single-file HTML is
+    preferred (TexVerse GLBs are often 10–60 MB each — embedding 10 of them
+    produces a ~300 MB HTML, so use this sparingly).
+
+    Returns {"url": None, ...} if neither source is usable — the JS renders a
+    placeholder instead of the panel.
+    """
+    if embed_path and os.path.exists(embed_path):
+        import base64
+        with open(embed_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        return {
+            "url": f"data:model/gltf-binary;base64,{b64}",
+            "z_up_to_y_up": bool(z_up_to_y_up),
+        }
+    return {"url": glb_url, "z_up_to_y_up": bool(z_up_to_y_up)}
 
 
 _HTML_TEMPLATE = """<!DOCTYPE html>
@@ -498,8 +520,15 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
       var renderer = new THREE.WebGLRenderer({{ canvas: cvs, antialias: true }});
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setClearColor(0x0a0a0a);
+      renderer.outputEncoding = THREE.sRGBEncoding;
       var scene = new THREE.Scene();
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x333333, 1.0));
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x333333, 1.2));
+      var dir = new THREE.DirectionalLight(0xffffff, 1.0);
+      dir.position.set(2, 3, 2);
+      scene.add(dir);
+      var dir2 = new THREE.DirectionalLight(0xffffff, 0.6);
+      dir2.position.set(-2, 1, -2);
+      scene.add(dir2);
       var camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
       camera.position.set(1.2, 1.0, 1.2);
       var controls = new THREE.OrbitControls(camera, cvs);
@@ -571,33 +600,32 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
   }}
 
   // Normalise a GLB to world-space [-0.5, 0.5]^3 using the same bbox/scale
-  // rule as data_toolkit/voxelize_pbr.py. Applied as root transforms so we
-  // don't have to care about parent-node matrices (which per-vertex edits
-  // would silently get wrong).
+  // rule as data_toolkit/voxelize_pbr.py. Applied via applyMatrix4 on root so
+  // the affine composes correctly with existing node transforms (per-vertex
+  // edits would silently break nested hierarchies; see Codex review).
   function normaliseGlb(root, zUpToYUp) {{
     if (zUpToYUp) {{
-      // Apply the Blender-Z-up → Y-up rotation as a container transform so
-      // the world bbox below reflects the rotated mesh.
-      var container = new THREE.Group();
-      container.rotation.x = -Math.PI / 2;
-      container.add(root);
-      root = container;
+      // Rotate the whole scene first so the bbox below reflects Y-up.
+      var Rzy = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+      root.applyMatrix4(Rzy);
     }}
     root.updateMatrixWorld(true);
     var box = new THREE.Box3().setFromObject(root);
     var mn = box.min, mx = box.max;
     var cx = (mn.x + mx.x) * 0.5, cy = (mn.y + mx.y) * 0.5, cz = (mn.z + mx.z) * 0.5;
     var s = 0.99999 / Math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z);
-    // World-space centering + uniform scale: wraps the mesh in a container
-    // whose transform takes world pos p to (p - c) * s.
-    var outer = new THREE.Group();
-    root.position.set(-cx, -cy, -cz);
-    outer.scale.setScalar(s);
-    outer.add(root);
+    // Compose (world - c) * s as a single matrix: S * T. applyMatrix4
+    // pre-multiplies, so after the call root.matrix transforms its vertices'
+    // world positions by S*T.
+    var T = new THREE.Matrix4().makeTranslation(-cx, -cy, -cz);
+    var S = new THREE.Matrix4().makeScale(s, s, s);
+    var M = new THREE.Matrix4().multiplyMatrices(S, T);
+    root.applyMatrix4(M);
     // Then +90° around X (proper rotation (x, y, z) -> (x, -z, y)) so the
     // mesh lands in the same Three.js frame as the voxel panels.
-    outer.rotation.x = Math.PI / 2;
-    return outer;
+    var R = new THREE.Matrix4().makeRotationX(Math.PI / 2);
+    root.applyMatrix4(R);
+    return root;
   }}
 
   function loadPanel(pIdx, d) {{
@@ -623,6 +651,12 @@ body {{ background:#0a0a0a; color:#e0e0e0; font-family:'Segoe UI',Arial,sans-ser
       new THREE.GLTFLoader().load(d.url, function(gltf) {{
         rec.content = normaliseGlb(gltf.scene, d.z_up_to_y_up);
         rec.scene.add(rec.content);
+      }}, undefined, function(err) {{
+        console.error('GLB load failed:', err);
+        var miss = document.createElement('div');
+        miss.className = 'missing';
+        miss.textContent = 'GLB load failed';
+        rec.pane.appendChild(miss);
       }});
     }}
   }}
