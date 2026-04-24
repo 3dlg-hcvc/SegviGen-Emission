@@ -65,6 +65,10 @@ def main() -> None:
     ap.add_argument("--resolution", type=int, default=256)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--skip_existing", action="store_true", default=True)
+    ap.add_argument("--rank", type=int, default=0)
+    ap.add_argument("--world_size", type=int, default=1)
+    ap.add_argument("--aggregate_stats", action="store_true", default=False,
+                    help="After encoding my shard, re-read ALL shards' .npz and write normalization_stats.json; only set on rank 0")
     args = ap.parse_args()
 
     voxel_dir = os.path.join(args.data_root, f"emission_voxels_{args.resolution}")
@@ -86,8 +90,11 @@ def main() -> None:
     print(f"  encoder params: {sum(p.numel() for p in encoder.parameters()):,}")
 
     df = pd.read_parquet(args.parquet)
-    shas = list(df.index.astype(str))
-    print(f"Samples in parquet: {len(shas)}")
+    shas_all = list(df.index.astype(str))
+    start = len(shas_all) * args.rank // args.world_size
+    end = len(shas_all) * (args.rank + 1) // args.world_size
+    shas = shas_all[start:end]
+    print(f"Samples in parquet: {len(shas_all)}  rank {args.rank}/{args.world_size} → {len(shas)}")
 
     all_feats = []
     processed, skipped, missing = 0, 0, 0
@@ -121,10 +128,22 @@ def main() -> None:
         if (i + 1) % 50 == 0 or i == len(shas) - 1:
             print(f"  [{i+1}/{len(shas)}] processed={processed} skipped={skipped} missing={missing}")
 
-    if not all_feats:
-        print("No latents to aggregate stats over; aborting.")
-        sys.exit(1)
+    print(f"\nRank {args.rank} done: processed={processed} skipped={skipped} missing={missing}")
 
+    # Stats are computed once (on --aggregate_stats worker) by re-reading every
+    # .npz in save_dir — this handles sharded runs where no single worker has
+    # seen all samples.
+    if not args.aggregate_stats:
+        return
+    print("Aggregating stats across all shards...")
+    import glob
+    all_feats = []
+    for p in sorted(glob.glob(os.path.join(save_dir, "*.npz"))):
+        d = np.load(p)
+        all_feats.append(torch.from_numpy(d["feats"]).float())
+    if not all_feats:
+        print("No latents to aggregate; aborting.")
+        sys.exit(1)
     all_f = torch.cat(all_feats, dim=0)
     mean, std = all_f.mean(dim=0), all_f.std(dim=0)
     stats = {
@@ -134,13 +153,12 @@ def main() -> None:
         "channels": int(all_f.shape[1]),
         "feat_min": float(all_f.min()),
         "feat_max": float(all_f.max()),
-        "n_samples": processed + skipped,
+        "n_samples": len(all_feats),
     }
     stats_path = os.path.join(save_dir, "normalization_stats.json")
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)
     print(f"\nWrote stats to {stats_path}")
-
     print("\n=== Emission normalization stats (paste into DiT config) ===")
     print("    emission_normalization:")
     print(f"      mean: [{', '.join(f'{v:.6f}' for v in mean.tolist())}]")

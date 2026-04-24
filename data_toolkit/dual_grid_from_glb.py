@@ -112,12 +112,18 @@ def main() -> None:
     ap.add_argument("--resolution", type=int, default=256)
     ap.add_argument("--max_workers", type=int, default=1,
                     help="o_voxel uses threads internally; default serial to avoid over-subscription")
+    ap.add_argument("--rank", type=int, default=0)
+    ap.add_argument("--world_size", type=int, default=1)
     args = ap.parse_args()
 
     out_dir = os.path.join(args.out_root, f"dual_grid_{args.resolution}")
     os.makedirs(out_dir, exist_ok=True)
     df = pd.read_parquet(args.parquet)
-    shas = list(df.index.astype(str))
+    shas_all = list(df.index.astype(str))
+    start = len(shas_all) * args.rank // args.world_size
+    end = len(shas_all) * (args.rank + 1) // args.world_size
+    shas = shas_all[start:end]
+    print(f"Samples total: {len(shas_all)}  rank {args.rank}/{args.world_size} → {len(shas)}")
 
     ok, skip, err = 0, 0, 0
     err_log = []

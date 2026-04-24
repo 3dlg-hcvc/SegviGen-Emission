@@ -43,6 +43,8 @@ def main() -> None:
     ap.add_argument("--enc_pretrained", default="microsoft/TRELLIS.2-4B/ckpts/tex_enc_next_dc_f16c32_fp16")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--skip_existing", action="store_true", default=True)
+    ap.add_argument("--rank", type=int, default=0)
+    ap.add_argument("--world_size", type=int, default=1)
     args = ap.parse_args()
 
     voxel_dir = os.path.join(args.data_root, f"pbr_voxels_{args.resolution}")
@@ -60,8 +62,12 @@ def main() -> None:
     encoder = models.from_pretrained(args.enc_pretrained).eval().float().to(args.device)
 
     df = pd.read_parquet(args.parquet)
-    shas = list(df.index.astype(str))
-    print(f"Samples: {len(shas)}")
+    shas_all = list(df.index.astype(str))
+    # Shard by rank: each worker processes a contiguous slice of shas.
+    start = len(shas_all) * args.rank // args.world_size
+    end = len(shas_all) * (args.rank + 1) // args.world_size
+    shas = shas_all[start:end]
+    print(f"Samples total: {len(shas_all)}  rank {args.rank}/{args.world_size} → {len(shas)}")
 
     ok, missing, skipped = 0, 0, 0
     for i, sha in enumerate(shas):
