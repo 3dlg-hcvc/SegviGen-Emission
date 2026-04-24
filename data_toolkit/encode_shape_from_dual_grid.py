@@ -53,7 +53,9 @@ def main() -> None:
     os.makedirs(save_dir, exist_ok=True)
 
     print(f"Loading shape encoder: {args.enc_pretrained}")
-    encoder = models.from_pretrained(args.enc_pretrained).eval().to(args.device)
+    # Force fp32 so it matches fp32 inputs from .vxz → float() (pretrained
+    # weights are fp16 per the ckpt name; Triton tl.dot asserts same dtype).
+    encoder = models.from_pretrained(args.enc_pretrained).eval().float().to(args.device)
 
     df = pd.read_parquet(args.parquet)
     shas = list(df.index.astype(str))

@@ -54,7 +54,10 @@ def main() -> None:
     os.makedirs(save_dir, exist_ok=True)
 
     print(f"Loading PBR encoder: {args.enc_pretrained}")
-    encoder = models.from_pretrained(args.enc_pretrained).eval().to(args.device)
+    # Pretrained weights are fp16 per the ckpt name; force fp32 so it matches
+    # fp32 inputs from the .vxz → float() → sparse tensor pipeline (Triton's
+    # tl.dot asserts matching dtypes).
+    encoder = models.from_pretrained(args.enc_pretrained).eval().float().to(args.device)
 
     df = pd.read_parquet(args.parquet)
     shas = list(df.index.astype(str))
