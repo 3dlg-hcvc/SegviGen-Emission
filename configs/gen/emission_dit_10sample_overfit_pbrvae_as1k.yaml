@@ -59,7 +59,7 @@ trainer:
   args:
     max_steps: 6000
     batch_size_per_gpu: 8
-    batch_split: 1
+    batch_split: 2
     optimizer:
       name: AdamW
       args:
