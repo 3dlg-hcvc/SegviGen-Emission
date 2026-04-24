@@ -437,6 +437,26 @@ class LightGenSLatEmissionLatent(Dataset):
         if self.samples:
             self._validate_first_sample()
 
+        # Populate self.loads (per-sample token count) so BalancedResumableSampler
+        # can distribute heavy vs light samples evenly across DDP ranks. Uses the
+        # emission latent's coord count, which matches the sparse attention cost.
+        # Fast: just reads .npz header (no decompression of feats).
+        self.loads: List[int] = []
+        if self.samples:
+            for s in self.samples:
+                p = os.path.join(self.emit_dir, f"{s['sha256']}.npz")
+                try:
+                    with np.load(p) as d:
+                        self.loads.append(int(d["coords"].shape[0]))
+                except Exception:
+                    self.loads.append(0)
+            if self.loads:
+                lo, hi = min(self.loads), max(self.loads)
+                print(
+                    f"[LightGenSLatEmissionLatent] loads: min={lo} max={hi} "
+                    f"ratio={hi/max(lo,1):.1f}× (for BalancedResumableSampler)"
+                )
+
         print(
             f"[LightGenSLatEmissionLatent] split={split!r}: {len(self.samples)} samples, "
             f"emit_dir={self.emit_dir}, shape_dir={self.shape_dir}, "
