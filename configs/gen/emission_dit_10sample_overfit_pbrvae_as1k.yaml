@@ -17,7 +17,7 @@ models:
     name: ElasticSLatFlowModel
     args:
       resolution: 32
-      in_channels: 96
+      in_channels: 64
       out_channels: 32
       model_channels: 1536
       cond_channels: 1024
@@ -36,13 +36,14 @@ dataset:
     data_root: data/lightgen_test
     parquet_file: data/lightgen_test/df_10samples.parquet
     emission_latent_name: emission_pbr_finetune_10sample
-    pbr_latent_name: tex_enc_next_dc_f16c32_fp16_256
+    pbr_latent_name: tex_enc_next_dc_f16c32_fp16_256  # unused when skip_pbr_cond=true
     shape_latent_name: shape_enc_next_dc_f16c32_fp16_256
     thumbnail_dir: data/lightgen_test/thumbnails
     image_size: 512
     resolution: 256
     split: train
     split_json: data/lightgen_test/data_splits_10sample_as1k.json
+    skip_pbr_cond: true
     emission_normalization:
       mean: [0.047930, 3.592776, -0.736781, -2.614156, 4.220987, -0.508459, -0.007023, 1.846091, -0.967105, 1.685355, 0.677347, -2.375463, 0.546260, -1.542620, -4.312495, -1.951082, -1.744630, 4.870405, 3.237855, 1.626749, 1.432003, -0.582766, -1.723233, -3.701661, -0.461003, -0.025246, 1.413326, -0.892174, 3.707623, -0.427026, -0.479717, -3.131104]
       std: [4.830730, 3.571913, 4.110367, 4.295566, 4.975303, 3.112283, 4.109525, 4.626173, 3.384117, 4.213969, 3.638840, 3.666451, 3.163438, 3.576496, 4.336730, 3.526103, 3.255047, 4.415345, 3.841889, 3.445452, 3.891995, 3.846739, 3.194658, 3.893530, 4.399847, 4.758321, 4.261539, 3.333122, 4.117391, 4.412472, 2.766402, 4.065998]

@@ -397,6 +397,7 @@ class LightGenSLatEmissionLatent(Dataset):
         shape_normalization: Optional[Dict] = None,
         dummy_cond_channels: int = 32,
         roots: Optional[Any] = None,  # accepted but ignored
+        skip_pbr_cond: bool = False,
     ) -> None:
         super().__init__()
         self.data_root = data_root
@@ -405,11 +406,20 @@ class LightGenSLatEmissionLatent(Dataset):
         self.dummy_cond_channels = dummy_cond_channels
         self.thumbnail_dir = thumbnail_dir
         self.image_size = image_size
+        # When skip_pbr_cond=True, we run in the channel-hijack regime: the
+        # emission latent IS the PBR-slot latent (VAE trained with emission
+        # packed into base_color + default metallic/roughness/alpha), so
+        # concat_cond = shape only and DiT input = 32 (x_0) + 32 (shape) = 64,
+        # architecturally identical to the pretrained PBR DiT.
+        self.skip_pbr_cond = skip_pbr_cond
 
         self.emit_dir   = os.path.join(emission_latent_root or data_root,
                                        "emission_latents", emission_latent_name)
-        self.pbr_dir    = os.path.join(pbr_latent_root or data_root,
-                                       "pbr_latents",      pbr_latent_name)
+        self.pbr_dir    = (
+            os.path.join(pbr_latent_root or data_root,
+                         "pbr_latents",      pbr_latent_name)
+            if not skip_pbr_cond else None
+        )
         self.shape_dir  = (
             os.path.join(shape_latent_root or data_root, "shape_latents", shape_latent_name)
             if shape_latent_name
@@ -435,7 +445,10 @@ class LightGenSLatEmissionLatent(Dataset):
 
     def _validate_first_sample(self) -> None:
         sha256 = self.samples[0]["sha256"]
-        for d, label in [(self.emit_dir, "emission"), (self.pbr_dir, "PBR material")]:
+        checks = [(self.emit_dir, "emission")]
+        if self.pbr_dir is not None:
+            checks.append((self.pbr_dir, "PBR material"))
+        for d, label in checks:
             p = os.path.join(d, f"{sha256}.npz")
             if not os.path.exists(p):
                 raise FileNotFoundError(
@@ -448,30 +461,45 @@ class LightGenSLatEmissionLatent(Dataset):
             os.path.join(self.emit_dir, f"{sha256}.npz"),
             normalization=self.emit_norm,
         )
-        pbr_z = _read_npz_as_sparse(
-            os.path.join(self.pbr_dir, f"{sha256}.npz"),
-            normalization=self.pbr_norm,
-        )
-        assert torch.equal(x_0.coords, pbr_z.coords), (
-            f"Emission and PBR latent coords mismatch for {sha256}: "
-            f"{x_0.coords.shape} vs {pbr_z.coords.shape}"
-        )
 
-        # Build concat_cond: shape(32) + PBR(32) = 64ch, or PBR-only (32ch)
-        if self.shape_dir is not None:
+        if self.skip_pbr_cond:
+            # Channel-hijack regime: concat_cond = shape only (32ch). PBR
+            # conditioning is unnecessary because our emission VAE already
+            # encoded [emit_rgb, default_metallic, default_roughness, default_alpha]
+            # into the 32-ch latent, which IS the PBR-slot latent.
+            if self.shape_dir is None:
+                raise ValueError("skip_pbr_cond=True requires shape_latent_name to be set")
             shape_path = os.path.join(self.shape_dir, f"{sha256}.npz")
-            if os.path.exists(shape_path):
-                shape_z = _read_npz_as_sparse(shape_path, normalization=self.shape_norm)
-                assert torch.equal(x_0.coords, shape_z.coords), (
-                    f"Emission and shape latent coords mismatch for {sha256}"
-                )
-                concat_cond = x_0.replace(
-                    torch.cat([shape_z.feats, pbr_z.feats], dim=-1)
-                )
+            shape_z = _read_npz_as_sparse(shape_path, normalization=self.shape_norm)
+            assert torch.equal(x_0.coords, shape_z.coords), (
+                f"Emission and shape latent coords mismatch for {sha256}"
+            )
+            concat_cond = x_0.replace(shape_z.feats)
+        else:
+            pbr_z = _read_npz_as_sparse(
+                os.path.join(self.pbr_dir, f"{sha256}.npz"),
+                normalization=self.pbr_norm,
+            )
+            assert torch.equal(x_0.coords, pbr_z.coords), (
+                f"Emission and PBR latent coords mismatch for {sha256}: "
+                f"{x_0.coords.shape} vs {pbr_z.coords.shape}"
+            )
+
+            # Build concat_cond: shape(32) + PBR(32) = 64ch, or PBR-only (32ch)
+            if self.shape_dir is not None:
+                shape_path = os.path.join(self.shape_dir, f"{sha256}.npz")
+                if os.path.exists(shape_path):
+                    shape_z = _read_npz_as_sparse(shape_path, normalization=self.shape_norm)
+                    assert torch.equal(x_0.coords, shape_z.coords), (
+                        f"Emission and shape latent coords mismatch for {sha256}"
+                    )
+                    concat_cond = x_0.replace(
+                        torch.cat([shape_z.feats, pbr_z.feats], dim=-1)
+                    )
+                else:
+                    concat_cond = pbr_z
             else:
                 concat_cond = pbr_z
-        else:
-            concat_cond = pbr_z
 
         out: Dict[str, Any] = {
             "x_0":         x_0,
