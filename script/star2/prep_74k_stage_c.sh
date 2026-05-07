@@ -19,6 +19,8 @@ echo "Submitting ${JOB_NAME} (rank ${RANK}/${WORLD_SIZE}, dep=${AB_JOBID})"
 OUT=$(ssh star2 "sbatch ${DEP_FLAG} --parsable" <<EOF
 #!/bin/bash
 #SBATCH --partition=3dlg-hcvc-lab-short
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
