@@ -15,18 +15,20 @@ JOB_NAME="prep_74k_AB_r${RANK}"
 echo "Submitting ${JOB_NAME} (rank ${RANK}/${WORLD_SIZE}, limit='${LIMIT_FLAG}')"
 
 OUT=$(ssh star2 "sbatch --parsable" <<EOF
-#!/bin/zsh
+#!/bin/bash
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
 #SBATCH --time=3-00:00
+#SBATCH --nodelist=cs-venus-15,cs-venus-16,cs-venus-17,cs-venus-18,cs-venus-08
 #SBATCH --output=/localscratch/dya78/${JOB_NAME}.out
 #SBATCH -J ${JOB_NAME}
 
 set -e
-source ~/.zshrc
+source ~/.bashrc 2>/dev/null || true
 cd /localscratch/dya78/TRELLIS.2-lightning
 git pull origin lightgen
+source /localscratch/dya78/miniconda3/etc/profile.d/conda.sh
 conda activate trellis2
 
 LOCAL=/localscratch/dya78/lightgen_74k_part${RANK}
@@ -54,7 +56,7 @@ rsync -av \${JUP}/data_splits_emissive_74k_pinned.json    \${LOCAL}/
       --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} \\
       --workers 16 --resolution 256 ${LIMIT_FLAG}
 ) 2>&1 | tee "\${LOG}"
-AB_EXIT=\${pipestatus[1]}
+AB_EXIT=\${PIPESTATUS[0]}
 
 if [[ \${AB_EXIT} -eq 0 ]]; then
   cd \${LOCAL}
