@@ -52,6 +52,15 @@ rsync -av \${JUP}/data_splits_emissive_74k_pinned.json    \${LOCAL}/
   python data_toolkit/prep_74k_dump.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 8 --blender \${BLENDER_PATH} ${LIMIT_FLAG}
   python data_toolkit/voxelize_pbr.py lightgen_74k --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --max_workers 16 --resolution 256
   python data_toolkit/prep_74k_dual_grid.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 16 --resolution 256 ${LIMIT_FLAG}
+  # Merge per-rank new_records/* into <artifact>/metadata.csv so downstream
+  # encoders find their expected pbr_voxelized / emission_voxelized flags.
+  python -c "import pandas as pd, glob, os; root='\${LOCAL}'
+for art in ['pbr_voxels_256','emission_voxels_256','dual_grid_256']:
+  parts=sorted(glob.glob(os.path.join(root,art,'new_records','part_*.csv')))
+  if not parts: continue
+  df=pd.concat([pd.read_csv(p) for p in parts],ignore_index=True).drop_duplicates('sha256',keep='last')
+  df.to_csv(os.path.join(root,art,'metadata.csv'),index=False)
+  print(f'[merge] {art}: {len(df)} rows')"
 ) 2>&1 | tee "\${LOG}"
 AB_EXIT=\${PIPESTATUS[0]}
 
