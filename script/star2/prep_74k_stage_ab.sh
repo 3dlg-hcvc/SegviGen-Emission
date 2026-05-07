@@ -16,10 +16,11 @@ echo "Submitting ${JOB_NAME} (rank ${RANK}/${WORLD_SIZE}, limit='${LIMIT_FLAG}')
 
 OUT=$(ssh star2 "sbatch --parsable" <<EOF
 #!/bin/bash
+#SBATCH --partition=3dlg-hcvc-lab-short
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
-#SBATCH --time=3-00:00
+#SBATCH --time=1-12:00
 #SBATCH --nodelist=cs-venus-15,cs-venus-16,cs-venus-17,cs-venus-18,cs-venus-08
 #SBATCH --output=/localscratch/dya78/${JOB_NAME}.out
 #SBATCH -J ${JOB_NAME}
