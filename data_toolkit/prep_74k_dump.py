@@ -17,6 +17,7 @@ Usage (typical, inside an sbatch body):
 """
 from __future__ import annotations
 import argparse
+import glob
 import os
 import shutil
 import subprocess
@@ -120,6 +121,28 @@ def main() -> int:
     with open(fail_path, "w") as f:
         for sha, msg in fail_log:
             f.write(f"{sha}\t{msg}\n")
+
+    # Write a pbr_dumps/metadata.csv with `pbr_dumped` flags so the downstream
+    # voxelize_pbr.py merge sees this column. Existing rows (from prior ranks)
+    # are preserved by writing a per-rank fragment that voxelize_pbr.py merges.
+    fragment_path = os.path.join(out_dir, "new_records", f"part_{args.rank}.csv")
+    rows = []
+    for _, r in df_rank.iterrows():
+        sha = r["sha256"]
+        pickle_path = os.path.join(out_dir, f"{sha}.pickle")
+        rows.append({"sha256": sha, "pbr_dumped": os.path.exists(pickle_path)})
+    pd.DataFrame.from_records(rows).to_csv(fragment_path, index=False)
+
+    # Also concatenate any existing fragments into pbr_dumps/metadata.csv so
+    # voxelize_pbr.py's `metadata.combine_first` finds it. Idempotent: re-runs
+    # rebuild from fragments. World-size>1 callers can re-run after all ranks
+    # finish to produce a fully merged metadata.csv.
+    frags = sorted(glob.glob(os.path.join(out_dir, "new_records", "part_*.csv")))
+    if frags:
+        merged = pd.concat([pd.read_csv(p) for p in frags], ignore_index=True)
+        merged = merged.drop_duplicates(subset="sha256", keep="last")
+        merged.to_csv(os.path.join(out_dir, "metadata.csv"), index=False)
+
     print(f"[prep_74k_dump] done: ok={success} skip={skip} fail={fail} "
           f"in {(time.time()-t0)/60:.1f} min  failures -> {fail_path}")
     return 0
