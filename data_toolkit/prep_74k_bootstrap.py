@@ -30,7 +30,26 @@ import pandas as pd
 
 PARQUET_SRC = Path("/local-scratch/localhome/dya78/code/lightgen/data/baked_uv/df_SomgProc_final.parquet")
 SPLIT_SRC   = Path("/local-scratch/localhome/dya78/code/lightgen/data_processing/annotation/data_splits_emissive_74k_pinned.json")
-JUP_BASE    = Path("/3dlg-jupiter-project/lightgen/dataset/lightgen_74k")
+
+
+def _resolve_jupyter_base() -> Path:
+    """The jupyter NFS mount appears under different paths on different hosts:
+      * star2 cluster: /3dlg-jupiter-project/...
+      * local cs-3dlg-23 (and other CS workstations): /cs/3dlg-jupiter-project/...
+    Pick whichever mount actually exists."""
+    candidates = [
+        Path("/3dlg-jupiter-project/lightgen/dataset/lightgen_74k"),
+        Path("/cs/3dlg-jupiter-project/lightgen/dataset/lightgen_74k"),
+    ]
+    for p in candidates:
+        if p.parent.parent.parent.exists():  # /<...>/lightgen exists?
+            return p
+    raise SystemExit(
+        "Could not find the jupyter mount. Tried:\n  " +
+        "\n  ".join(str(c) for c in candidates))
+
+
+JUP_BASE = _resolve_jupyter_base()
 
 
 def build_metadata() -> pd.DataFrame:
