@@ -49,12 +49,8 @@ LOG=\${LOCAL}/log/\${TS}-prep_74k_C_rank${RANK}.log
   rsync -av \${JUP}/voxels/part${RANK}_voxels.tar           \${LOCAL}/
   cd \${LOCAL} && tar -xf part${RANK}_voxels.tar && cd -
 
-  python data_toolkit/encode_pbr_latent.py \\
-      --root \${LOCAL} --rank 0 --world_size 1 --resolution 256
-  python data_toolkit/encode_shape_from_dual_grid.py \\
-      --data_root \${LOCAL} \\
-      --parquet \${LOCAL}/df_SomgProc_final.parquet \\
-      --rank 0 --world_size 1 --resolution 256
+  python data_toolkit/encode_pbr_latent.py --root \${LOCAL} --rank 0 --world_size 1 --resolution 256
+  python data_toolkit/encode_shape_from_dual_grid.py --data_root \${LOCAL} --parquet \${LOCAL}/df_SomgProc_final.parquet --rank 0 --world_size 1 --resolution 256
 ) 2>&1 | tee "\${LOG}"
 C_EXIT=\${PIPESTATUS[0]}
 

@@ -49,15 +49,9 @@ rsync -av \${JUP}/data_splits_emissive_74k_pinned.json    \${LOCAL}/
 
 (
   set -e
-  python data_toolkit/prep_74k_dump.py \\
-      --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} \\
-      --workers 8 --blender \${BLENDER_PATH} ${LIMIT_FLAG}
-  python data_toolkit/voxelize_pbr.py lightgen_74k \\
-      --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} \\
-      --max_workers 16 --resolution 256
-  python data_toolkit/prep_74k_dual_grid.py \\
-      --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} \\
-      --workers 16 --resolution 256 ${LIMIT_FLAG}
+  python data_toolkit/prep_74k_dump.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 8 --blender \${BLENDER_PATH} ${LIMIT_FLAG}
+  python data_toolkit/voxelize_pbr.py lightgen_74k --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --max_workers 16 --resolution 256
+  python data_toolkit/prep_74k_dual_grid.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 16 --resolution 256 ${LIMIT_FLAG}
 ) 2>&1 | tee "\${LOG}"
 AB_EXIT=\${PIPESTATUS[0]}
 
