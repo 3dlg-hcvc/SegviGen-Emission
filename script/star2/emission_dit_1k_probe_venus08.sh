@@ -67,6 +67,8 @@ python train.py \
     --output_dir outputs/${NAME} \
     --num_gpus ${NUM_GPUS} \
     --ckpt last \
+    --override trainer.args.batch_size_per_gpu=24 \
+    --override trainer.args.batch_split=1 \
     ${STEPS_OVERRIDE} 2>&1 | tee "\${LOG_FILE}"
 
 TRAIN_EXIT=\${pipestatus[1]}
