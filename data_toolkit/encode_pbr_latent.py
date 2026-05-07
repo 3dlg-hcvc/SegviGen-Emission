@@ -55,14 +55,17 @@ if __name__ == '__main__':
 
     if opt.enc_model is None:
         latent_name = f'{opt.enc_pretrained.split("/")[-1]}_{opt.resolution}'
-        encoder = models.from_pretrained(opt.enc_pretrained).eval().cuda()
+        # Force fp32 so weights match fp32 inputs (pretrained ckpt is fp16 per
+        # name; Triton tl.dot asserts same dtype). Same fix as
+        # encode_shape_from_dual_grid.py (commit d842eb6).
+        encoder = models.from_pretrained(opt.enc_pretrained).eval().float().cuda()
     else:
         latent_name = f'{opt.enc_model.split("/")[-1]}_{opt.ckpt}_{opt.resolution}'
         cfg = edict(json.load(open(os.path.join(opt.model_root, opt.enc_model, 'config.json'), 'r')))
         encoder = getattr(models, cfg.models.encoder.name)(**cfg.models.encoder.args).cuda()
         ckpt_path = os.path.join(opt.model_root, opt.enc_model, 'ckpts', f'encoder_{opt.ckpt}.pt')
         encoder.load_state_dict(torch.load(ckpt_path), strict=False)
-        encoder.eval()
+        encoder.eval().float()
         print(f'Loaded model from {ckpt_path}')
     
     os.makedirs(os.path.join(opt.pbr_latent_root, 'pbr_latents', latent_name, 'new_records'), exist_ok=True)
