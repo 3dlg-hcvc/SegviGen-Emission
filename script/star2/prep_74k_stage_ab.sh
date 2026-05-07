@@ -29,10 +29,19 @@ OUT=$(ssh star2 "sbatch --parsable" <<EOF
 
 set -e
 source ~/.bashrc 2>/dev/null || true
-cd /localscratch/dya78/TRELLIS.2-lightning
-git pull origin lightgen
 source /localscratch/dya78/miniconda3/etc/profile.d/conda.sh
 conda activate trellis2
+
+# Per-rank repo clone — multiple ranks on the same node can't share one repo
+# (concurrent git pull races + uncommitted local changes from prior debugging).
+REPO=/localscratch/dya78/TRELLIS.2-lightning_part${RANK}
+if [[ ! -d \${REPO}/.git ]]; then
+  git clone -b lightgen git@github.com:3dlg-hcvc/TRELLIS.2-lightning.git \${REPO}
+fi
+cd \${REPO}
+git fetch origin lightgen
+git stash push -u -m "auto-stash \$(date +%s)" 2>/dev/null || true
+git reset --hard origin/lightgen
 
 LOCAL=/localscratch/dya78/lightgen_74k_part${RANK}
 JUP=/3dlg-jupiter-project/lightgen/dataset/lightgen_74k

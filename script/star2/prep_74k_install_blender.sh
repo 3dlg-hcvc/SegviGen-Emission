@@ -16,8 +16,21 @@ if [[ -x "${BLENDER_PATH}" ]]; then
     return 0
 fi
 
-echo "[install_blender] downloading Blender ${BLENDER_VERSION} -> ${TARBALL_LOCAL}"
+# Multiple ranks on the same node can race here; serialize via flock.
+LOCK=/localscratch/dya78/.blender_install.lock
 mkdir -p /localscratch/dya78
+exec 9>"${LOCK}"
+flock 9
+
+# Re-check after acquiring the lock (another rank may have just finished).
+if [[ -x "${BLENDER_PATH}" ]]; then
+    echo "[install_blender] already present (after lock): ${BLENDER_PATH}"
+    export BLENDER_PATH
+    flock -u 9
+    return 0
+fi
+
+echo "[install_blender] downloading Blender ${BLENDER_VERSION} -> ${TARBALL_LOCAL}"
 wget -q --show-progress -O "${TARBALL_LOCAL}" "${TARBALL_URL}"
 
 echo "[install_blender] extracting -> /localscratch/dya78/"
@@ -26,6 +39,7 @@ rm -f "${TARBALL_LOCAL}"
 
 if [[ ! -x "${BLENDER_PATH}" ]]; then
     echo "[install_blender] FATAL: ${BLENDER_PATH} not present after extraction" >&2
+    flock -u 9
     return 1
 fi
 
@@ -35,3 +49,4 @@ PILLOW_SCRIPT="$(pwd)/data_toolkit/blender_script/install_pillow.py"
 
 echo "[install_blender] done. BLENDER_PATH=${BLENDER_PATH}"
 export BLENDER_PATH
+flock -u 9
