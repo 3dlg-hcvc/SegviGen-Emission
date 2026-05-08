@@ -19,7 +19,6 @@ OUT=$(ssh star2 "sbatch --parsable" <<EOF
 #SBATCH --partition=3dlg-hcvc-lab-short
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
 #SBATCH --time=1-12:00
