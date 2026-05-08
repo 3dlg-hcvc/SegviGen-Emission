@@ -22,7 +22,7 @@ OUT=$(ssh star2 "sbatch --parsable" <<EOF
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
 #SBATCH --time=1-12:00
-#SBATCH --nodelist=cs-venus-02,cs-venus-07,cs-venus-09,cs-venus-15,cs-venus-16
+#SBATCH --nodelist=cs-venus-07,cs-venus-09,cs-venus-15,cs-venus-16
 #SBATCH --output=/localscratch/dya78/${JOB_NAME}.out
 #SBATCH -J ${JOB_NAME}
 
