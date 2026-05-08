@@ -41,20 +41,32 @@ fi
 
 # Step 2: Per-repo Pillow install (each rank's clone needs its own
 # blender_packages/PIL with .so files; .so are gitignored so a fresh clone is
-# broken). Idempotent: skip if _imaging.so is already present.
-REPO_PIL_SO="$(pwd)/blender_packages/PIL/_imaging.cpython-311-x86_64-linux-gnu.so"
-if [[ ! -f "${REPO_PIL_SO}" ]]; then
-    echo "[install_blender] installing Pillow into $(pwd)/blender_packages/"
+# broken). Skip if _imaging.so is present AND its bundled lib deps resolve
+# inside pillow.libs/ — a stale .so referencing missing-hash libtiff causes
+# silent rank-wide Blender import failure (~13 fails/s).
+REPO_PKGS="$(pwd)/blender_packages"
+REPO_PIL_SO="${REPO_PKGS}/PIL/_imaging.cpython-311-x86_64-linux-gnu.so"
+PIL_HEALTHY=0
+if [[ -f "${REPO_PIL_SO}" ]] && [[ -d "${REPO_PKGS}/pillow.libs" ]]; then
+    # Compare hashed libtiff name in _imaging's NEEDED list against the file
+    # actually present in pillow.libs/. If they don't match, _imaging.so is
+    # stale (pillow upgraded, .so left behind) and Pillow imports will crash.
+    NEEDED_TIFF=$(LD_LIBRARY_PATH="${REPO_PKGS}/pillow.libs" ldd "${REPO_PIL_SO}" 2>/dev/null | awk '/libtiff/ {print $1}')
+    if [[ -n "${NEEDED_TIFF}" ]] && [[ -f "${REPO_PKGS}/pillow.libs/${NEEDED_TIFF}" ]]; then
+        PIL_HEALTHY=1
+    fi
+fi
+if [[ "${PIL_HEALTHY}" -eq 1 ]]; then
+    echo "[install_blender] blender_packages PIL already complete"
+else
+    echo "[install_blender] blender_packages PIL missing/stale, reinstalling fresh"
+    rm -rf "${REPO_PKGS}/PIL" "${REPO_PKGS}/pillow.libs" "${REPO_PKGS}/pillow"-*.dist-info
     BLENDER_PY="${BLENDER_DIR}/4.5/python/bin/python3.11"
     if [[ -x "${BLENDER_PY}" ]]; then
-        # --upgrade ensures the .so files (typically gitignored) are written
-        # alongside the tracked .py files.
-        "${BLENDER_PY}" -m pip install --target="$(pwd)/blender_packages" --upgrade Pillow
+        "${BLENDER_PY}" -m pip install --target="${REPO_PKGS}" --upgrade Pillow
     else
         echo "[install_blender] WARNING: ${BLENDER_PY} not found; skipping --target install" >&2
     fi
-else
-    echo "[install_blender] blender_packages PIL already complete"
 fi
 
 echo "[install_blender] done. BLENDER_PATH=${BLENDER_PATH}"
