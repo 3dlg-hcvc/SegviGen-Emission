@@ -34,6 +34,10 @@ source ~/.bashrc 2>/dev/null || true
 source /localscratch/dya78/miniconda3/etc/profile.d/conda.sh
 conda activate trellis2
 
+# encode_shape_from_dual_grid.py reads df_SomgProc_final.parquet -> needs pyarrow,
+# which is not in the trellis2 conda env. Idempotent install.
+python -c "import pyarrow" 2>/dev/null || pip install --quiet pyarrow
+
 REPO=/localscratch/dya78/TRELLIS.2-lightning_part${RANK}
 if [[ ! -d \${REPO}/.git ]]; then
   git clone -b lightgen git@github.com:3dlg-hcvc/TRELLIS.2-lightning.git \${REPO}
