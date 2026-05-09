@@ -57,7 +57,7 @@ rsync -av \${JUP}/data_splits_emissive_74k_pinned.json    \${LOCAL}/
 
 (
   set -e
-  python data_toolkit/prep_74k_dump.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 8 --blender \${BLENDER_PATH} ${LIMIT_FLAG}
+  python data_toolkit/prep_74k_dump.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 32 --blender \${BLENDER_PATH} ${LIMIT_FLAG}
   # voxelize_pbr.py runs with rank=0 world_size=1 because it post-filters
   # metadata by pbr_dumped==True (only this rank's pickles), and re-slicing
   # that already-sliced set with the parent rank/world drops most samples.
