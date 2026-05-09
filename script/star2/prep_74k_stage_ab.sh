@@ -20,7 +20,7 @@ OUT=$(ssh star2 "sbatch --parsable" <<EOF
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --mem=256G
+#SBATCH --mem=400G
 #SBATCH --time=1-12:00
 #SBATCH --nodelist=cs-venus-07,cs-venus-09,cs-venus-15,cs-venus-16
 #SBATCH --output=/localscratch/dya78/${JOB_NAME}.out
@@ -57,13 +57,13 @@ rsync -av \${JUP}/data_splits_emissive_74k_pinned.json    \${LOCAL}/
 
 (
   set -e
-  python data_toolkit/prep_74k_dump.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 32 --blender \${BLENDER_PATH} ${LIMIT_FLAG}
+  python data_toolkit/prep_74k_dump.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 64 --blender \${BLENDER_PATH} ${LIMIT_FLAG}
   # voxelize_pbr.py runs with rank=0 world_size=1 because it post-filters
   # metadata by pbr_dumped==True (only this rank's pickles), and re-slicing
   # that already-sliced set with the parent rank/world drops most samples.
   # prep_74k_dual_grid.py keeps the parent's rank/world (it reads the unfiltered
   # parent metadata.csv and per-sample skips when no pickle exists).
-  python data_toolkit/voxelize_pbr.py lightgen_74k --root \${LOCAL} --rank 0 --world_size 1 --max_workers 16 --resolution 256
+  python data_toolkit/voxelize_pbr.py lightgen_74k --root \${LOCAL} --rank 0 --world_size 1 --max_workers 32 --resolution 256
   python data_toolkit/prep_74k_dual_grid.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 16 --resolution 256 ${LIMIT_FLAG}
   # Merge per-rank new_records/* into <artifact>/metadata.csv so downstream
   # encoders find their expected pbr_voxelized / emission_voxelized flags.
