@@ -26,7 +26,10 @@ ssh fir "sbatch" << EOF
 #SBATCH --cpus-per-task=48
 #SBATCH --output=%N-%j.out
 #SBATCH --open-mode=append
-#SBATCH --mem=1152G
+# Fir H100 nodes have RealMemory=1125G (verified via scontrol show node).
+# 4 * 256G = 1024G stays under physical max AND under the 1:12:288 RGU ratio
+# (mirrors finetune_pbr_1k.sh's 256G/GPU pattern that we know works on fir).
+#SBATCH --mem=1024G
 #SBATCH --account=rrg-msavva
 #SBATCH --requeue
 #SBATCH --signal=B:SIGTERM@300
