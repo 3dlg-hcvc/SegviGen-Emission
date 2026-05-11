@@ -112,9 +112,15 @@ trainer:
   name: EmissionPbrFinetuneTrainer
   args:
     max_steps: 20000
-    # BS=48 per H100 (BS sweep 2026-05-08): 60 GB peak on 1k → ~70-75 GB
-    # worst-case on 74k tail batches → fits H100 80 GB.
-    batch_size_per_gpu: 48
+    # BS=32 per H100. BS=48 OOM'd at step ~20 of 74k training (job 39635199,
+    # 2026-05-11): peak hit 77 GB on rank 0 — the 74k voxel-count tail is
+    # fatter than expected and worst-case batches exceeded the 1k extrapolation.
+    # BS=32 was empirically stable at 49 GB peak on 1k and gives comfortable
+    # margin for 74k tail batches. See memory project_fir_pbr_vae_bs_sweep.md
+    # for the full BS table; bump back up once the dataset is filtered for
+    # outlier-large samples or balanced sampler weights are voxel-count-based
+    # (currently file-size, only 0.7 correlated with memory).
+    batch_size_per_gpu: 32
     batch_split: 1
     optimizer:
       name: AdamW
