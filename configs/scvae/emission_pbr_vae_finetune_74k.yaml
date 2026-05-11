@@ -151,7 +151,11 @@ trainer:
     # epoch (vs i_log=1 in the 1k overfit setup).
     i_log: 10
     i_sample: 2000
-    save_top_k: 3
+    # save_top_k=1 (down from 3) cuts Lustre write churn by 3x. With 13 GB
+    # per checkpoint and Lustre struggling to sustain even 100 MB/s for these
+    # files (job 39637182 saw last.ckpt take 10+ min to fully write),
+    # multiple top-K saves were blocking training for 10+ minutes per val.
+    save_top_k: 1
     monitor_metric: val/loss
     monitor_mode: min
     dataloader_num_workers: 8
@@ -162,7 +166,9 @@ trainer:
     use_balanced_sampler: true
     val_split_name: val
     val_batch_size_per_gpu: 16
-    val_every_epochs: 2
+    # val_every_epochs=10 (up from 2) — together with save_top_k=1, this means
+    # one val + one ckpt every ~11k steps instead of every ~2.2k steps.
+    val_every_epochs: 10
     num_sanity_val_steps: 0
     wandb_enable: true
     wandb_project: emission-pbr-vae-finetune
