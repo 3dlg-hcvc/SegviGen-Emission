@@ -20,7 +20,12 @@ ssh fir "sbatch" << EOF
 #SBATCH --mail-type=END
 #SBATCH -J ${NAME}
 #SBATCH --gpus-per-node=h100:4
-#SBATCH --time=24:00:00
+# 3-hour window: matches the maintenance-friendly slot that e74k_van fits into.
+# Training won't finish in one window (20k steps * ~1s = ~5.5h), so the
+# --requeue + SIGTERM handler below checkpoints at the 2h55m mark and the
+# job re-enters the queue automatically. Bump back to 24h once the
+# maintenance reservation clears.
+#SBATCH --time=03:00:00
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=48
