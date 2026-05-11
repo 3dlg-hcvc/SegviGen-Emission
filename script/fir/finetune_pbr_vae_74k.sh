@@ -29,8 +29,10 @@ ssh fir "sbatch" << EOF
 #SBATCH --nodes=1
 # 4 tasks (one per GPU) is the canonical Lightning+Slurm DDP pattern.
 # Lightning's SLURM cluster env asserts ntasks-per-node == devices and crashes
-# at startup if they don't match. We launch with `srun python train.py` so
+# at startup if they don't match. We launch with 'srun python train.py' so
 # Slurm spawns the 4 ranks and Lightning picks them up via SLURM_PROCID.
+# (Backticks here would trigger local command substitution inside the
+# unquoted heredoc and try to run srun on the workstation.)
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=12
 #SBATCH --output=%N-%j.out
