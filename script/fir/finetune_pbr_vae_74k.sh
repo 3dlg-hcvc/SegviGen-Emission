@@ -27,8 +27,12 @@ ssh fir "sbatch" << EOF
 # maintenance reservation clears.
 #SBATCH --time=03:00:00
 #SBATCH --nodes=1
-#SBATCH --tasks-per-node=1
-#SBATCH --cpus-per-task=48
+# 4 tasks (one per GPU) is the canonical Lightning+Slurm DDP pattern.
+# Lightning's SLURM cluster env asserts ntasks-per-node == devices and crashes
+# at startup if they don't match. We launch with `srun python train.py` so
+# Slurm spawns the 4 ranks and Lightning picks them up via SLURM_PROCID.
+#SBATCH --ntasks-per-node=4
+#SBATCH --cpus-per-task=12
 #SBATCH --output=%N-%j.out
 #SBATCH --open-mode=append
 # Fir H100 nodes have RealMemory=1125G (verified via scontrol show node).
@@ -90,10 +94,19 @@ echo ""
 
 # Reduce VRAM fragmentation (matters at BS=48 on H100; see
 # memory project_fir_pbr_vae_bs_sweep.md).
+# PYTORCH_CUDA_ALLOC_CONF is deprecated in newer torch builds in favor of
+# PYTORCH_ALLOC_CONF; set both for forward+backward compatibility.
+export PYTORCH_ALLOC_CONF=expandable_segments:True
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# Run training in background so SIGTERM trap can fire
-python train.py \
+# pipefail so the pipeline's exit reflects python's exit (not tee's, which
+# always exits 0). Without this, a Python crash inside the pipe slips past
+# the EXIT_CODE check below and we never trigger --requeue.
+set -o pipefail
+
+# Run training in background so SIGTERM trap can fire. srun spawns 4 ranks
+# (one per H100); Lightning's SLURM env picks them up.
+srun python train.py \
     --config ${CONFIG} \
     --output_dir ${OUTPUT_DIR} \
     --ckpt last \
