@@ -112,15 +112,19 @@ trainer:
   name: EmissionPbrFinetuneTrainer
   args:
     max_steps: 20000
-    # BS=32 per H100. BS=48 OOM'd at step ~20 of 74k training (job 39635199,
-    # 2026-05-11): peak hit 77 GB on rank 0 — the 74k voxel-count tail is
-    # fatter than expected and worst-case batches exceeded the 1k extrapolation.
-    # BS=32 was empirically stable at 49 GB peak on 1k and gives comfortable
-    # margin for 74k tail batches. See memory project_fir_pbr_vae_bs_sweep.md
-    # for the full BS table; bump back up once the dataset is filtered for
-    # outlier-large samples or balanced sampler weights are voxel-count-based
-    # (currently file-size, only 0.7 correlated with memory).
-    batch_size_per_gpu: 32
+    # BS=16 per H100. Two OOMs on the way down on 74k:
+    #   * BS=48 OOM'd rank 0 at step ~20 (job 39635199): 77 GB peak.
+    #   * BS=32 OOM'd rank 2 at step ~40 (job 39635737): 76 GB peak.
+    # The 74k voxel-count tail is materially fatter than the 1k extrapolation
+    # predicted, and the file-size load proxy used by BalancedResumableSampler
+    # (LightGenSLatEmission.self.loads = os.path.getsize(emission_vxz)) is
+    # only ~0.7 correlated with actual VRAM, so even balanced DDP can land a
+    # rank with multiple heavy samples. BS=16 gives ~3x VRAM headroom and
+    # should survive worst-case 74k batches at the cost of throughput.
+    # Future fix to recover BS=48: change self.loads to use voxel count
+    # (coords.shape[0] from o_voxel.io.read_vxz) instead of file size — see
+    # CLAUDE.md "Pick the right load proxy" + memory project_fir_pbr_vae_bs_sweep.md.
+    batch_size_per_gpu: 16
     batch_split: 1
     optimizer:
       name: AdamW
@@ -157,7 +161,7 @@ trainer:
     # will OOM under DDP. LightGenSLatEmission exposes self.loads.
     use_balanced_sampler: true
     val_split_name: val
-    val_batch_size_per_gpu: 48
+    val_batch_size_per_gpu: 16
     val_every_epochs: 2
     num_sanity_val_steps: 0
     wandb_enable: true
