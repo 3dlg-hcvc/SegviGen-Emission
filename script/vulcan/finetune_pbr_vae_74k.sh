@@ -31,14 +31,27 @@ NAME="emission_pbr_vae_ft_74k_vulcan${NAME_SUFFIX}"
 OUTPUT_DIR="/scratch/dya78/TRELLIS.2-lightning/outputs/${NAME}"
 BRANCH="lightgen"
 
+# Submit directly if we're already on a Slurm host (sbatch on PATH = running
+# on a vulcan login node); otherwise ssh in from the workstation. This lets
+# the same launcher run from local OR from inside a vulcan tmux session
+# without depending on an ssh ControlMaster being warm.
+if command -v sbatch >/dev/null 2>&1; then
+    SUBMIT=(sbatch)
+    SUBMIT_DESC="local sbatch (already on a Slurm host)"
+else
+    SUBMIT=(ssh vulcan sbatch)
+    SUBMIT_DESC="ssh vulcan sbatch (from workstation)"
+fi
+
 echo "Submitting job: ${NAME}"
 echo "  Nodes:    ${NODES} (x 4 L40S = $((NODES*4)) GPUs)"
 echo "  BS/GPU:   ${BS}   (global BS = $((NODES*4*BS)))"
 echo "  Walltime: ${WALLTIME}"
 echo "  Config:   ${CONFIG}"
 echo "  Output:   ${OUTPUT_DIR}"
+echo "  Submit:   ${SUBMIT_DESC}"
 
-ssh vulcan "sbatch" << EOF
+"${SUBMIT[@]}" << EOF
 #!/bin/bash
 #SBATCH --mail-user=yangdongchen1@gmail.com
 #SBATCH --mail-type=END,FAIL,REQUEUE
