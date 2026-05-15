@@ -166,9 +166,15 @@ trainer:
     use_balanced_sampler: true
     val_split_name: val
     val_batch_size_per_gpu: 16
-    # val_every_epochs=10 (up from 2) — together with save_top_k=1, this means
-    # one val + one ckpt every ~11k steps instead of every ~2.2k steps.
-    val_every_epochs: 10
+    # val_every_epochs=1 — last.ckpt is saved only on val_end (per train.py
+    # ModelCheckpoint construction with every_n_train_steps=1 +
+    # _defer_save_until_validation). With 3h walltime cycles fitting ~2
+    # epochs, val_every_epochs=10 meant val NEVER fired within a cycle, so
+    # last.ckpt was frozen at step 2440 across May 11 -> May 15 (~30 requeue
+    # cycles all reloading the same May-11 checkpoint, wasting ~4 days of
+    # compute). val_every_epochs=1 gives ~2 saves per cycle; with save_top_k=1
+    # write cost is one 13 GB last.ckpt + at most one best.ckpt per val.
+    val_every_epochs: 1
     num_sanity_val_steps: 0
     wandb_enable: true
     wandb_project: emission-pbr-vae-finetune
