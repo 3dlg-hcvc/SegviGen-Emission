@@ -111,6 +111,27 @@ class EmissionPbrFinetuneTrainer(BasicTrainer):
         terms["kl"] = 0.5 * torch.mean(mean.pow(2) + logvar.exp() - logvar - 1)
         terms["loss"] = terms["loss"] + self.lambda_kl * terms["kl"]
 
+        # Diagnostic decomposition for the step-~5000 KL spikes observed on fir.
+        # kl == kl_mu_term + kl_var_term (modulo float rounding). Plus encoder
+        # output stats so we can tell *which* axis spiked: μ drifted far from 0
+        # (kl_mu_term up, mu_abs_max big) vs σ² ballooned on some latent dim
+        # (kl_var_term up, logvar_max big or logvar_min very negative).
+        # Note: parent _log_terms uses sync_dist=True (basic.py:201), so the
+        # *_max / *_min entries are mean-of-rank-extrema, not the true global
+        # max/min — they'll still surface a per-rank outlier on average, but
+        # a single-rank one-off spike could be diluted by 4x.
+        with torch.no_grad():
+            mu_sq_mean = mean.pow(2).mean()
+            var_kl_term = (logvar.exp() - logvar - 1).mean()
+            terms["kl_mu_term"]  = 0.5 * mu_sq_mean
+            terms["kl_var_term"] = 0.5 * var_kl_term
+            terms["mu_abs_mean"] = mean.abs().mean()
+            terms["mu_abs_max"]  = mean.abs().max()
+            terms["logvar_mean"] = logvar.mean()
+            terms["logvar_max"]  = logvar.max()
+            terms["logvar_min"]  = logvar.min()
+            terms["var_mean"]    = logvar.exp().mean()
+
         return terms, {}
 
     @torch.no_grad()
