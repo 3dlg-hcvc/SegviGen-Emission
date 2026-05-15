@@ -28,20 +28,36 @@ NAME_SUFFIX="${NAME_SUFFIX:-_${NODES}node}"
 # halved max_steps to match fir's sample-count budget. See header in the yaml.
 CONFIG="configs/scvae/emission_pbr_vae_finetune_74k_vulcan.yaml"
 NAME="emission_pbr_vae_ft_74k_vulcan${NAME_SUFFIX}"
-OUTPUT_DIR="/scratch/dya78/TRELLIS.2-lightning/outputs/${NAME}"
+REPO="/scratch/dya78/TRELLIS.2-lightning"
+OUTPUT_DIR="${REPO}/outputs/${NAME}"
 BRANCH="lightgen"
 
 # Submit directly if we're already on a Slurm host (sbatch on PATH = running
 # on a vulcan login node); otherwise ssh in from the workstation. This lets
 # the same launcher run from local OR from inside a vulcan tmux session
-# without depending on an ssh ControlMaster being warm.
+# without depending on an ssh ControlMaster being warm. run_on_vulcan() runs
+# a command on the vulcan login node either way — used for the git sync below.
 if command -v sbatch >/dev/null 2>&1; then
     SUBMIT=(sbatch)
     SUBMIT_DESC="local sbatch (already on a Slurm host)"
+    run_on_vulcan() { ( cd "${REPO}" && eval "$1" ); }
 else
     SUBMIT=(ssh vulcan sbatch)
     SUBMIT_DESC="ssh vulcan sbatch (from workstation)"
+    run_on_vulcan() { ssh vulcan "cd ${REPO} && $1"; }
 fi
+
+# Sync code on the vulcan LOGIN node — NOT in the sbatch body. Vulcan compute
+# nodes have no outbound SSH, so `git fetch` from inside the job fails with
+# "github.com port 22: Network is unreachable". The login node has outbound,
+# so sync here and let the job run against the already-checked-out tree.
+echo "Syncing ${BRANCH} on vulcan login node..."
+run_on_vulcan "git fetch origin ${BRANCH} && git checkout ${BRANCH} && git pull --ff-only origin ${BRANCH}" \
+    || { echo "FAIL: git sync on vulcan login node (diverged tree, or run from a host without repo+outbound)"; exit 1; }
+# `| tail -1` strips any ssh MOTD noise; guard against an empty result so a
+# failed rev-parse can't slip an empty commit string into the submitted job.
+SYNCED_COMMIT="$(run_on_vulcan 'git rev-parse --short HEAD' | tail -1)"
+[ -n "${SYNCED_COMMIT}" ] || { echo "FAIL: could not read synced commit on vulcan"; exit 1; }
 
 echo "Submitting job: ${NAME}"
 echo "  Nodes:    ${NODES} (x 4 L40S = $((NODES*4)) GPUs)"
@@ -50,6 +66,7 @@ echo "  Walltime: ${WALLTIME}"
 echo "  Config:   ${CONFIG}"
 echo "  Output:   ${OUTPUT_DIR}"
 echo "  Submit:   ${SUBMIT_DESC}"
+echo "  Commit:   ${SYNCED_COMMIT} (synced on login node)"
 
 "${SUBMIT[@]}" << EOF
 #!/bin/bash
@@ -106,12 +123,14 @@ echo "======================================"
 # python/3.11.5, cuda/12.6, StdEnv/2023, gcc all present).
 module load StdEnv/2023 gcc python/3.11 cuda/12.6 arrow/21.0.0 opencv/4.13.0 sparsehash
 
-# Pull latest code from origin/${BRANCH} (per CLAUDE.md: never edit on cluster).
-# Fail fast: don't proceed into staging/training if the sync is broken.
+# Code was already synced to ${SYNCED_COMMIT} on the login node before this
+# job was submitted — vulcan compute nodes have no outbound SSH so we cannot
+# git fetch here. Just cd in and log what we're running against; warn (don't
+# fail) if HEAD drifted from what the launcher synced.
 cd /scratch/dya78/TRELLIS.2-lightning || { echo "FAIL: repo dir missing"; exit 1; }
-git fetch origin ${BRANCH}   || { echo "FAIL: git fetch"; exit 1; }
-git checkout ${BRANCH}        || { echo "FAIL: git checkout"; exit 1; }
-git pull --ff-only origin ${BRANCH} || { echo "FAIL: git pull ff-only (local diverged from origin)"; exit 1; }
+RUN_COMMIT=\$(git rev-parse --short HEAD)
+echo "Repo HEAD: \${RUN_COMMIT} (launcher synced ${SYNCED_COMMIT})"
+[ "\${RUN_COMMIT}" = "${SYNCED_COMMIT}" ] || echo "WARN: HEAD drifted from the launcher-synced commit since submission"
 
 # Activate virtualenv (built by setup.sh; see project_fir_deployment.md)
 source /scratch/dya78/TRELLIS.2-lightning/env/bin/activate \\
