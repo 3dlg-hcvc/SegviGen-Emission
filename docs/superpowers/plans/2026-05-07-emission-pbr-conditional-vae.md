@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a new emission VAE pathway that surgically modifies the pretrained PBR VAE so the encoder ingests emission only and the decoder is conditioned on shape + PBR latents via channel-concat at the decoder input, plus a two-stage training schedule (surgical warmup → full finetune).
+**Goal:** Build a new emission VAE pathway that surgically modifies the pretrained PBR VAE so the encoder ingests emission only and the decoder is conditioned on the PBR latent via channel-concat at the decoder input, plus a two-stage training schedule (surgical warmup → full finetune).
 
-**Architecture:** Reuse 100% of the pretrained PBR VAE's interior blocks (`encoder.blocks.*`, `decoder.blocks.*`) and surgically modify three projection layers: `encoder.input_layer` (6→3), `decoder.from_latent` (32→**96**, expanded with zero-init cols for the conditioning), `decoder.output_layer` (6→3). Conditioning latents are loaded pre-encoded from disk (no live encoder in the trainer). Training has two stages: A=freeze interior + train surgical layers for 1000 steps, B=unfreeze + layer-wise LR.
+**Architecture:** Reuse 100% of the pretrained PBR VAE's interior blocks (`encoder.blocks.*`, `decoder.blocks.*`) and surgically modify three projection layers: `encoder.input_layer` (6→3), `decoder.from_latent` (32→**64**, expanded with 32 zero-init cols for the PBR conditioning), `decoder.output_layer` (6→3). The PBR conditioning latent is loaded pre-encoded from disk (no live encoder in the trainer). Shape is **not** an explicit concat-cond — it's already implicit in the shared sparse voxel coords. Training has two stages: A=freeze interior + train surgical layers for 1000 steps, B=unfreeze + layer-wise LR.
 
 **Tech Stack:** PyTorch Lightning + the existing `trellis2` codebase. Sparse tensors via `trellis2.modules.sparse`. Pretrained weights via `trellis2.models.from_pretrained` (HF-hub-backed). WandB for metrics.
 
@@ -40,7 +40,7 @@
 
 | Path | Change |
 | --- | --- |
-| `trellis2/datasets/lightgen_slat.py` | Add optional `pbr_latent_name`, `shape_latent_name`, `pbr_latent_root`, `shape_latent_root` args to `LightGenSLatEmission.__init__`. Load corresponding pre-encoded `.npz` files in `get_instance` and return them as `pbr_latent` / `shape_latent` keys in the sample dict. `_sparse_collate` already handles any extra `SparseTensor` keys, no collate changes. |
+| `trellis2/datasets/lightgen_slat.py` | Add optional `pbr_latent_name`, `pbr_latent_root` args to `LightGenSLatEmission.__init__`. Load the pre-encoded `.npz` file in `get_instance` and return it as the `pbr_latent` key in the sample dict. `_sparse_collate` already handles any extra `SparseTensor` keys, no collate changes. |
 | `trellis2/trainers/__init__.py` | Register `EmissionPbrConditionalVaeTrainer` in `_LAZY_MAP` and the `if TYPE_CHECKING` block. |
 | `train.py` | Add `EmissionPbrConditionalVaeTrainer` to `TRAINER_MAP`. |
 
@@ -52,7 +52,7 @@
 - Create: `trellis2/utils/model_surgery.py`
 - Test: `data_toolkit/test_emission_pbr_cvae_surgery.py`
 
-The helper takes two freshly-instantiated `SparseUnetVaeEncoder` / `SparseUnetVaeDecoder` of the **target** shape (3-ch input encoder, 96-ch `from_latent` decoder, 3-ch output decoder) and warm-inits them from the pretrained 6-ch encoder + 6-ch decoder, including the slice-copy / zero-padding of the three surgical layers.
+The helper takes two freshly-instantiated `SparseUnetVaeEncoder` / `SparseUnetVaeDecoder` of the **target** shape (3-ch input encoder, **64-ch** `from_latent` decoder, 3-ch output decoder) and warm-inits them from the pretrained 6-ch encoder + 6-ch decoder, including the slice-copy / zero-padding of the three surgical layers.
 
 - [ ] **Step 1: Write the failing smoke test**
 
@@ -70,7 +70,7 @@ from trellis2.utils.model_surgery import surgically_init_emission_pbr_cvae
 
 
 # Match emission_pbr_vae_finetune_1k.yaml's encoder / decoder shape, but with
-# the surgical I/O sizes (3-ch in, 96-ch from_latent, 3-ch out).
+# the surgical I/O sizes (3-ch in, 64-ch from_latent, 3-ch out).
 COMMON = dict(
     model_channels=[64, 128, 256, 512, 1024],
     latent_channels=32,
@@ -88,7 +88,7 @@ enc = SparseUnetVaeEncoder(
 
 DEC_COMMON = dict(
     model_channels=[1024, 512, 256, 128, 64],
-    latent_channels=96,
+    latent_channels=64,
     num_blocks=[4, 16, 8, 4, 0],
     block_type=["SparseConvNeXtBlock3d"] * 5,
     block_args=[{"use_checkpoint": False}] * 5,
@@ -134,12 +134,12 @@ if not torch.equal(enc.input_layer.bias, pre_enc.input_layer.bias):
     failures.append("enc.input_layer bias not copied from pretrained")
 
 # 3) decoder.from_latent.weight[:, 0:32] == pretrained.from_latent.weight
-#    decoder.from_latent.weight[:, 32:96] == 0
+#    decoder.from_latent.weight[:, 32:64] == 0
 #    decoder.from_latent.bias == pretrained.from_latent.bias
 if not torch.equal(dec.from_latent.weight[:, 0:32], pre_dec.from_latent.weight):
     failures.append("dec.from_latent[:, 0:32] != pretrained from_latent weight")
-if not torch.all(dec.from_latent.weight[:, 32:96] == 0):
-    failures.append("dec.from_latent[:, 32:96] is not zero-init")
+if not torch.all(dec.from_latent.weight[:, 32:64] == 0):
+    failures.append("dec.from_latent[:, 32:64] is not zero-init")
 if not torch.equal(dec.from_latent.bias, pre_dec.from_latent.bias):
     failures.append("dec.from_latent bias not copied from pretrained")
 
@@ -189,7 +189,7 @@ def surgically_init_emission_pbr_cvae(
     Expected target shapes:
         encoder.input_layer   :  3 -> model_channels[0]
         encoder.to_latent     :  unchanged from pretrained
-        decoder.from_latent   :  96 -> model_channels[0]
+        decoder.from_latent   :  64 -> model_channels[0]   (32 emission + 32 PBR cond)
         decoder.output_layer  :  model_channels[-1] -> 3
 
     All `blocks.*`, `to_subdiv`, and `to_latent` modules are copied 1:1 from
@@ -197,7 +197,7 @@ def surgically_init_emission_pbr_cvae(
         - encoder.input_layer.weight  := pretrained.input_layer.weight[:, 0:3]
         - encoder.input_layer.bias    := pretrained.input_layer.bias
         - decoder.from_latent.weight  := [pretrained.from_latent.weight, 0]
-                                          (cols 32:96 are zero-init)
+                                          (cols 32:64 are zero-init)
         - decoder.from_latent.bias    := pretrained.from_latent.bias
         - decoder.output_layer.weight := pretrained.output_layer.weight[0:3, :]
         - decoder.output_layer.bias   := pretrained.output_layer.bias[0:3]
@@ -227,13 +227,13 @@ def surgically_init_emission_pbr_cvae(
     # ---- Decoder ----
     dec_sd = pre_dec.state_dict()
 
-    # Surgical from_latent: zero-pad cols 32:96.
+    # Surgical from_latent: zero-pad cols 32:64.
     fl_w = dec_sd["from_latent.weight"]  # shape [model_channels[0], 32]
     fl_b = dec_sd["from_latent.bias"]
     assert fl_w.shape[1] == 32, (
         f"Expected pretrained decoder from_latent.weight shape [_, 32], got {tuple(fl_w.shape)}"
     )
-    new_fl_w = torch.zeros(fl_w.shape[0], 96, dtype=fl_w.dtype)
+    new_fl_w = torch.zeros(fl_w.shape[0], 64, dtype=fl_w.dtype)
     new_fl_w[:, 0:32] = fl_w
     dec_sd["from_latent.weight"] = new_fl_w.contiguous()
     dec_sd["from_latent.bias"] = fl_b.clone()
@@ -277,21 +277,21 @@ git commit -m "feat(emission-pbr-cvae): surgical init helper for conditional emi
 
 ---
 
-## Task 2: Dataset extension (load pre-encoded PBR / shape latents)
+## Task 2: Dataset extension (load pre-encoded PBR latent)
 
 **Files:**
 - Modify: `trellis2/datasets/lightgen_slat.py`
 - Test: `data_toolkit/test_emission_pbr_cvae_dataset.py`
 
-`LightGenSLatEmission` currently returns `{"x": SparseTensor[N, 3+C_pbr], "sha256": ...}`. We extend it to optionally return pre-encoded conditioning latents at the downsampled grid.
+`LightGenSLatEmission` currently returns `{"x": SparseTensor[N, 3+C_pbr], "sha256": ...}`. We extend it to optionally return a pre-encoded PBR conditioning latent at the downsampled grid.
 
 - [ ] **Step 1: Write the failing smoke test**
 
 Create `data_toolkit/test_emission_pbr_cvae_dataset.py`:
 
 ```python
-"""Smoke: LightGenSLatEmission with pbr_latent_name + shape_latent_name returns
-pbr_latent / shape_latent SparseTensors at the same downsampled coords."""
+"""Smoke: LightGenSLatEmission with pbr_latent_name returns a pbr_latent
+SparseTensor at the downsampled grid."""
 import sys
 import torch
 from trellis2.datasets.lightgen_slat import LightGenSLatEmission
@@ -305,7 +305,6 @@ ds = LightGenSLatEmission(
     split_json="data/lightgen_test/data_splits_10sample_as1k.json",
     pbr_attrs=[],  # we don't need PBR voxels — using pre-encoded latents
     pbr_latent_name="tex_enc_next_dc_f16c32_fp16_256",
-    shape_latent_name="shape_enc_next_dc_f16c32_fp16_256",
 )
 
 sample = ds[0]
@@ -315,24 +314,14 @@ failures = []
 if sample["x"].feats.shape[1] != 3:
     failures.append(f"x.feats has {sample['x'].feats.shape[1]} channels, expected 3 (emission-only)")
 
-# 2) pbr_latent / shape_latent are present and 32-channel
-for key in ("pbr_latent", "shape_latent"):
-    if key not in sample:
-        failures.append(f"{key} missing from sample dict")
-        continue
-    if sample[key].feats.shape[1] != 32:
-        failures.append(f"{key}.feats has {sample[key].feats.shape[1]} channels, expected 32")
+# 2) pbr_latent is present and 32-channel
+if "pbr_latent" not in sample:
+    failures.append("pbr_latent missing from sample dict")
+elif sample["pbr_latent"].feats.shape[1] != 32:
+    failures.append(f"pbr_latent.feats has {sample['pbr_latent'].feats.shape[1]} channels, expected 32")
 
-# 3) PBR / shape latent coords are aligned with each other.
-if "pbr_latent" in sample and "shape_latent" in sample:
-    if not torch.equal(sample["pbr_latent"].coords, sample["shape_latent"].coords):
-        failures.append(
-            f"PBR / shape latent coords differ: "
-            f"{sample['pbr_latent'].coords.shape} vs {sample['shape_latent'].coords.shape}"
-        )
-
-# 4) Latent grid is smaller than the voxel grid (downsampled).
-if sample["pbr_latent"].coords.shape[0] >= sample["x"].coords.shape[0]:
+# 3) Latent grid is smaller than the voxel grid (downsampled).
+if "pbr_latent" in sample and sample["pbr_latent"].coords.shape[0] >= sample["x"].coords.shape[0]:
     failures.append(
         f"Latent should be downsampled vs voxel grid: "
         f"latent M={sample['pbr_latent'].coords.shape[0]} vs voxel N={sample['x'].coords.shape[0]}"
@@ -343,7 +332,7 @@ if failures:
     for f in failures:
         print(f"  - {f}")
     sys.exit(1)
-print("PASS: dataset returns aligned pbr_latent and shape_latent.")
+print("PASS: dataset returns pbr_latent at downsampled grid.")
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -358,7 +347,7 @@ Expected: `TypeError: __init__() got an unexpected keyword argument 'pbr_latent_
 
 Modify `trellis2/datasets/lightgen_slat.py`. Reference the existing `LightGenSLatEmissionLatent` class (in the same file) for the `.npz` loader pattern (`_read_npz_as_sparse`).
 
-In `LightGenSLatEmission.__init__` (currently at [trellis2/datasets/lightgen_slat.py:245-291](trellis2/datasets/lightgen_slat.py#L245-L291)), add the four new optional kwargs after the existing `pbr_attrs` arg:
+In `LightGenSLatEmission.__init__` (currently at [trellis2/datasets/lightgen_slat.py:245-291](trellis2/datasets/lightgen_slat.py#L245-L291)), add two new optional kwargs after the existing `pbr_attrs` arg:
 
 ```python
 def __init__(
@@ -371,11 +360,9 @@ def __init__(
     split_indices: Optional[Any] = None,
     split_json: Optional[str] = None,
     pbr_attrs: List[str] = ("base_color", "metallic", "roughness", "alpha"),
-    # ↓↓↓ NEW: pre-encoded conditioning latents (optional)
+    # ↓↓↓ NEW: pre-encoded PBR conditioning latent (optional)
     pbr_latent_name: Optional[str] = None,
-    shape_latent_name: Optional[str] = None,
     pbr_latent_root: Optional[str] = None,
-    shape_latent_root: Optional[str] = None,
     roots: Optional[Any] = None,  # accepted but ignored (TrellisDataModule injects this)
 ) -> None:
 ```
@@ -387,23 +374,15 @@ At the bottom of `__init__` (after the `print(...)` that summarises the dataset)
         os.path.join(pbr_latent_root or data_root, "pbr_latents", pbr_latent_name)
         if pbr_latent_name else None
     )
-    self.shape_latent_dir = (
-        os.path.join(shape_latent_root or data_root, "shape_latents", shape_latent_name)
-        if shape_latent_name else None
-    )
     if self.pbr_latent_dir is not None:
         assert os.path.isdir(self.pbr_latent_dir), (
             f"pbr_latent dir does not exist: {self.pbr_latent_dir}"
         )
-    if self.shape_latent_dir is not None:
-        assert os.path.isdir(self.shape_latent_dir), (
-            f"shape_latent dir does not exist: {self.shape_latent_dir}"
-        )
 ```
 
-- [ ] **Step 4: Extend `get_instance` to load the latents**
+- [ ] **Step 4: Extend `get_instance` to load the PBR latent**
 
-In `LightGenSLatEmission.get_instance` (currently at [trellis2/datasets/lightgen_slat.py:303-320](trellis2/datasets/lightgen_slat.py#L303-L320)), after the line `return {"x": x, "sha256": sha256}`, replace it with:
+In `LightGenSLatEmission.get_instance` (currently at [trellis2/datasets/lightgen_slat.py:303-320](trellis2/datasets/lightgen_slat.py#L303-L320)), replace the final line `return {"x": x, "sha256": sha256}` with:
 
 ```python
         out: Dict[str, Any] = {"x": x, "sha256": sha256}
@@ -413,15 +392,10 @@ In `LightGenSLatEmission.get_instance` (currently at [trellis2/datasets/lightgen
                 os.path.join(self.pbr_latent_dir, f"{sha256}.npz"),
                 normalization=None,
             )
-        if self.shape_latent_dir is not None:
-            out["shape_latent"] = _read_npz_as_sparse(
-                os.path.join(self.shape_latent_dir, f"{sha256}.npz"),
-                normalization=None,
-            )
         return out
 ```
 
-`_read_npz_as_sparse` already exists in the same file (used by `LightGenSLatEmissionLatent`). We pass `normalization=None` because the new VAE uses normalized latents as-is (see spec).
+`_read_npz_as_sparse` already exists in the same file (used by `LightGenSLatEmissionLatent`). We pass `normalization=None` because the new VAE uses the normalized latent as stored on disk (see spec).
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -429,13 +403,13 @@ In `LightGenSLatEmission.get_instance` (currently at [trellis2/datasets/lightgen
 conda run -n trellis2 python data_toolkit/test_emission_pbr_cvae_dataset.py
 ```
 
-Expected: `PASS: dataset returns aligned pbr_latent and shape_latent.`
+Expected: `PASS: dataset returns pbr_latent at downsampled grid.`
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add trellis2/datasets/lightgen_slat.py data_toolkit/test_emission_pbr_cvae_dataset.py
-git commit -m "feat(emission-pbr-cvae): LightGenSLatEmission loads pre-encoded pbr/shape latents"
+git commit -m "feat(emission-pbr-cvae): LightGenSLatEmission loads pre-encoded pbr latent"
 ```
 
 ---
@@ -448,7 +422,7 @@ git commit -m "feat(emission-pbr-cvae): LightGenSLatEmission loads pre-encoded p
 
 The trainer:
 1. Calls the surgery helper inside an overridden `_apply_finetune_checkpoint` so the surgical init runs once at the start (instead of the base-class shape-mismatch-skip behavior).
-2. Implements `training_losses(x, pbr_latent, shape_latent)` that runs the trainable encoder on emission, concats the three latents, runs the decoder, computes L1 + KL.
+2. Implements `training_losses(x, pbr_latent)` that runs the trainable encoder on emission, concats `[z_emit, pbr_latent]` (64ch), runs the decoder, computes L1 + KL.
 3. Implements `on_train_start` and `on_train_batch_start` for the stage transition (freeze interior in Stage A, unfreeze with layer-wise LR in Stage B).
 
 - [ ] **Step 1: Write the failing smoke test**
@@ -484,7 +458,7 @@ encoder = SparseUnetVaeEncoder(
 decoder = SparseUnetVaeDecoder(
     out_channels=3,
     model_channels=[64, 32, 16, 8],
-    latent_channels=96,
+    latent_channels=64,
     num_blocks=[1, 1, 1, 0],
     block_type=["SparseConvNeXtBlock3d"] * 4,
     up_block_type=["SparseResBlockC2S3d"] * 3,
@@ -523,13 +497,12 @@ lat_coords = torch.cat(
     dim=-1,
 ).to(device)
 pbr_latent = SparseTensor(torch.randn(M, 32, device=device), lat_coords)
-shape_latent = SparseTensor(torch.randn(M, 32, device=device), lat_coords)
 
 # Skip the actual sparse forward — just verify training_losses *signature* dispatches
 # to the right code path. The encoder/decoder may not produce M outputs at the chosen
-# coords; what we test here is that training_losses accepts (x, pbr_latent, shape_latent).
+# coords; what we test here is that training_losses accepts (x, pbr_latent).
 try:
-    terms, _ = trainer.training_losses(x=x, pbr_latent=pbr_latent, shape_latent=shape_latent)
+    terms, _ = trainer.training_losses(x=x, pbr_latent=pbr_latent)
     assert "loss" in terms
     assert torch.isfinite(terms["loss"]).all()
     print("PASS: training_losses returns finite scalar loss.")
@@ -552,8 +525,8 @@ Create `trellis2/trainers/vae/emission_pbr_conditional.py`:
 
 ```python
 """Conditional emission VAE: encoder ingests emission only; decoder is
-conditioned on pre-encoded shape + PBR latents via channel-concat at the
-decoder input. Surgery on the pretrained PBR VAE in `_apply_finetune_checkpoint`."""
+conditioned on the pre-encoded PBR latent via channel-concat at the decoder
+input. Surgery on the pretrained PBR VAE in `_apply_finetune_checkpoint`."""
 from typing import *
 import os
 import numpy as np
@@ -573,7 +546,7 @@ class EmissionPbrConditionalVaeTrainer(BasicTrainer):
 
     Surgery (applied in `_apply_finetune_checkpoint`):
         * encoder.input_layer        : 6 -> 64 (3 -> 64 with cols 0:3 of pretrained)
-        * decoder.from_latent        : 32 -> 1024  (96 -> 1024 with cols 0:32 of pretrained, 32:96 zero)
+        * decoder.from_latent        : 32 -> 1024  (64 -> 1024 with cols 0:32 of pretrained, 32:64 zero)
         * decoder.output_layer       : 1024 -> 6  (1024 -> 3 with rows 0:3 of pretrained)
         * all `blocks.*` / `to_subdiv` / `to_latent` : copied 1:1.
 
@@ -584,9 +557,8 @@ class EmissionPbrConditionalVaeTrainer(BasicTrainer):
             param groups — surgical layers @ lr_peak, interior @ lr_interior_stage_b.
 
     Batch dict keys (from extended LightGenSLatEmission):
-        x            SparseTensor [N, 3]  emission voxels
-        pbr_latent   SparseTensor [M, 32] pre-encoded PBR latent
-        shape_latent SparseTensor [M, 32] pre-encoded shape latent
+        x           SparseTensor [N, 3]   emission voxels
+        pbr_latent  SparseTensor [M, 32]  pre-encoded PBR latent
 
     Args:
         loss_type             : "l1" or "l2"
@@ -753,14 +725,12 @@ class EmissionPbrConditionalVaeTrainer(BasicTrainer):
         self,
         x: sp.SparseTensor,
         pbr_latent: sp.SparseTensor,
-        shape_latent: sp.SparseTensor,
         **kwargs,
     ):
         """Emission VAE forward + L1 reconstruction + KL.
 
-        x.feats:           [N, 3] — emission target (also encoder input)
+        x.feats:           [N, 3]  — emission target (also encoder input)
         pbr_latent.feats:  [M, 32] — pre-encoded PBR conditioning
-        shape_latent.feats:[M, 32] — pre-encoded shape conditioning
         """
         target = x.feats[:, : self.emission_channels]  # [N, 3]
 
@@ -772,13 +742,10 @@ class EmissionPbrConditionalVaeTrainer(BasicTrainer):
         assert torch.equal(z.coords, pbr_latent.coords), (
             f"z_emit / pbr_latent coord mismatch: {z.coords.shape} vs {pbr_latent.coords.shape}"
         )
-        assert torch.equal(z.coords, shape_latent.coords), (
-            f"z_emit / shape_latent coord mismatch: {z.coords.shape} vs {shape_latent.coords.shape}"
-        )
 
         z_cat = z.replace(
-            torch.cat([z.feats, pbr_latent.feats, shape_latent.feats], dim=-1)
-        )  # [M, 96]
+            torch.cat([z.feats, pbr_latent.feats], dim=-1)
+        )  # [M, 64]
         y = self.training_models["decoder"](z_cat)  # SparseTensor [N, 3]
 
         terms = edict(loss=0.0)
@@ -820,11 +787,10 @@ class EmissionPbrConditionalVaeTrainer(BasicTrainer):
             data = recursive_to_device(data, self.device)
             x = data["x"]
             pbr_latent = data["pbr_latent"]
-            shape_latent = data["shape_latent"]
             target = x.feats[:, : self.emission_channels]
             z = self.models["encoder"](x)
             z_cat = z.replace(
-                torch.cat([z.feats, pbr_latent.feats, shape_latent.feats], dim=-1)
+                torch.cat([z.feats, pbr_latent.feats], dim=-1)
             )
             y = self.models["decoder"](z_cat)
             errors.append((target - y.feats).abs().mean().item())
@@ -898,12 +864,13 @@ Create `configs/scvae/emission_pbr_cvae_10sample.yaml`. Base it on `emission_pbr
 
 ```yaml
 # Conditional emission VAE finetuned from the pretrained PBR VAE on the 10-sample
-# dataset. Encoder ingests emission only; decoder is conditioned on pre-encoded
-# PBR + shape latents via channel-concat at decoder input.
+# dataset. Encoder ingests emission only; decoder is conditioned on the pre-encoded
+# PBR latent via channel-concat at decoder input. Shape is implicit in the shared
+# sparse voxel coords (no explicit shape latent).
 #
 # Pretrained surgery (see trellis2/utils/model_surgery.py):
 #   encoder.input_layer 6->3 (cols 0:3 of pretrained)
-#   decoder.from_latent 32->96 (cols 0:32 of pretrained, 32:96 zero)
+#   decoder.from_latent 32->64 (cols 0:32 of pretrained, 32:64 zero)
 #   decoder.output_layer 6->3 (rows 0:3 of pretrained)
 # Interior blocks load unchanged.
 #
@@ -932,7 +899,7 @@ models:
     args:
       out_channels: 3                          # ← 3 (emission), not 6
       model_channels: [1024, 512, 256, 128, 64]
-      latent_channels: 96                      # ← 96 (32 emission + 32 PBR + 32 shape)
+      latent_channels: 64                      # ← 64 (32 emission + 32 PBR)
       num_blocks: [4, 16, 8, 4, 0]
       block_type: [SparseConvNeXtBlock3d, SparseConvNeXtBlock3d, SparseConvNeXtBlock3d, SparseConvNeXtBlock3d, SparseConvNeXtBlock3d]
       up_block_type: [SparseResBlockC2S3d, SparseResBlockC2S3d, SparseResBlockC2S3d, SparseResBlockC2S3d]
@@ -953,9 +920,8 @@ dataset:
     resolution: 256
     split: train
     split_json: data/lightgen_test/data_splits_10sample_as1k.json
-    pbr_attrs: []                              # skip loading PBR voxels — using pre-encoded latents
+    pbr_attrs: []                              # skip loading PBR voxels — using pre-encoded latent
     pbr_latent_name: tex_enc_next_dc_f16c32_fp16_256
-    shape_latent_name: shape_enc_next_dc_f16c32_fp16_256
 
 trainer:
   name: EmissionPbrConditionalVaeTrainer
@@ -1030,7 +996,7 @@ git commit -m "feat(emission-pbr-cvae): register trainer + 10sample config"
 
 ## Task 5: 10-sample interactive probe on star2
 
-Probe before sbatch per the CLAUDE.md "interactive debug allocation" rule. The new architecture is a config change with OOM risk (decoder `from_latent` is 96→1024, larger than channel-hijack's 32→1024).
+Probe before sbatch per the CLAUDE.md "interactive debug allocation" rule. The new architecture is a config change with mild OOM risk (decoder `from_latent` is 64→1024, twice the input dim of channel-hijack's 32→1024 but still small relative to the interior blocks).
 
 - [ ] **Step 1: Write cluster launch script (used for both probe and full run)**
 
@@ -1114,7 +1080,7 @@ Acceptance criteria (from spec):
 - `train/stage` transitions A→B at step 1000 (visible in wandb).
 - No OOM, no NaN spikes.
 
-If train/loss plateaus above ~0.05 by step 5000, follow the spec's bisect playbook: re-run with `stage_a_steps=0` (no staging) to isolate whether staging is harming convergence, and separately re-run with `latent_channels=64` (drop shape conditioning, keep only PBR concat — requires also re-running the surgery for `from_latent` 32→64).
+If train/loss plateaus above ~0.05 by step 5000, follow the spec's bisect playbook: re-run with `stage_a_steps=0` (no staging) to isolate whether staging is harming convergence, and separately re-run with `latent_channels=32` (drop PBR conditioning entirely — emission latent only — requires also re-running the surgery for `from_latent` 32→32, i.e. no zero-pad columns).
 
 - [ ] **Step 6: Commit the launch script (after probe passes)**
 
@@ -1204,6 +1170,6 @@ git commit -m "feat(emission-pbr-cvae): 1k config + launch script for apples-to-
 | Cluster launch scripts | Task 5 Step 1, Task 6 Step 2 |
 | Stage A → Stage B transition mechanism | Task 3 Step 3 (`on_train_start`, `on_train_batch_start`, `_apply_stage_b`) |
 | Stage acceptance criteria (10sample, 1k) | Task 5 Step 5, Task 6 Step 5 |
-| Pre-encoded latent prerequisites verified on disk | Already confirmed during spec drafting (both `pbr_latents/tex_enc_next_dc_f16c32_fp16_256/` and `shape_latents/shape_enc_next_dc_f16c32_fp16_256/` exist under `data/lightgen_test/` and `data/lightgen_1k/`) |
+| Pre-encoded PBR latent prerequisite verified on disk | Already confirmed during spec drafting (`pbr_latents/tex_enc_next_dc_f16c32_fp16_256/` exists under both `data/lightgen_test/` and `data/lightgen_1k/`) |
 | Risk: resume past stage boundary | Task 3 Step 3 (`on_train_start` calls `_apply_stage_b` when `global_step >= stage_a_steps`) |
 | Risk: normalization shift in conditioning | Spec accepts as-is (zero-init makes step-0 invariant); covered implicitly |
