@@ -223,7 +223,13 @@ class EmissionPbrConditionalVaeTrainer(BasicTrainer):
 
         terms["kl"] = 0.5 * torch.mean(mean.pow(2) + logvar.exp() - logvar - 1)
         terms["loss"] = terms["loss"] + self.lambda_kl * terms["kl"]
-        terms["stage"] = torch.tensor(1.0 if self._stage_b_applied else 0.0)
+        # `stage` is a scalar metric synced across DDP ranks; must be on GPU so
+        # NCCL all-reduce works (CPU tensor fails: "No backend type associated
+        # with device type cpu").
+        terms["stage"] = torch.tensor(
+            1.0 if self._stage_b_applied else 0.0,
+            device=x.feats.device,
+        )
         return terms, {}
 
     # ------------------------------------------------------------------
