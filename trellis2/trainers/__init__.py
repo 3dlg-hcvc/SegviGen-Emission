@@ -8,6 +8,7 @@ __attributes = {
     'PbrVaeTrainer': 'vae.pbr_vae',
     'EmissionVaeTrainer': 'vae.emission_vae',
     'EmissionPbrFinetuneTrainer': 'vae.emission_pbr_finetune',
+    'EmissionPbrConditionalVaeTrainer': 'vae.emission_pbr_conditional',
     
     'FlowMatchingTrainer': 'flow_matching.flow_matching',
     'FlowMatchingCFGTrainer': 'flow_matching.flow_matching',
@@ -51,6 +52,7 @@ if __name__ == '__main__':
     from .vae.pbr_vae import PbrVaeTrainer
     from .vae.emission_vae import EmissionVaeTrainer
     from .vae.emission_pbr_finetune import EmissionPbrFinetuneTrainer
+    from .vae.emission_pbr_conditional import EmissionPbrConditionalVaeTrainer
     
     from .flow_matching.flow_matching import (
         FlowMatchingTrainer,
