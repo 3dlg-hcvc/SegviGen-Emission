@@ -252,6 +252,8 @@ class LightGenSLatEmission(Dataset):
         split_indices: Optional[Any] = None,
         split_json: Optional[str] = None,
         pbr_attrs: List[str] = ("base_color", "metallic", "roughness", "alpha"),
+        pbr_latent_name: Optional[str] = None,
+        pbr_latent_root: Optional[str] = None,
         roots: Optional[Any] = None,  # accepted but ignored (TrellisDataModule injects this)
     ) -> None:
         super().__init__()
@@ -290,6 +292,16 @@ class LightGenSLatEmission(Dataset):
             f"({self.emission_channels} emission + {pbr_ch} PBR)"
         )
 
+        # Optional pre-encoded PBR conditioning latent (for the conditional VAE).
+        self.pbr_latent_dir = (
+            os.path.join(pbr_latent_root or data_root, "pbr_latents", pbr_latent_name)
+            if pbr_latent_name else None
+        )
+        if self.pbr_latent_dir is not None:
+            assert os.path.isdir(self.pbr_latent_dir), (
+                f"pbr_latent dir does not exist: {self.pbr_latent_dir}"
+            )
+
     def _emission_vxz(self, sha256: str) -> str:
         return os.path.join(
             self.data_root, f"emission_voxels_{self.resolution}", f"{sha256}.vxz"
@@ -317,7 +329,14 @@ class LightGenSLatEmission(Dataset):
 
         batch_col = torch.zeros(coords_e.shape[0], 1, dtype=coords_e.dtype)
         x = SparseTensor(feats, torch.cat([batch_col, coords_e], dim=-1))
-        return {"x": x, "sha256": sha256}
+
+        out: Dict[str, Any] = {"x": x, "sha256": sha256}
+        if self.pbr_latent_dir is not None:
+            out["pbr_latent"] = _read_npz_as_sparse(
+                os.path.join(self.pbr_latent_dir, f"{sha256}.npz"),
+                normalization=None,
+            )
+        return out
 
     def __len__(self) -> int:
         return len(self.samples)
