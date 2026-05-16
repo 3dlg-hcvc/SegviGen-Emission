@@ -130,6 +130,10 @@ trainer:
     emission_channels: 3
     stage_a_steps: 1000
     lr_interior_stage_b: 3.0e-05
+    # Stage A freezes encoder.blocks/decoder.blocks (~99% of params), so DDP
+    # would otherwise complain about unused params on every step. Required
+    # until stage B opens; harmless afterwards.
+    ddp_find_unused_parameters: true
     finetune_ckpt:
       encoder: microsoft/TRELLIS.2-4B/ckpts/tex_enc_next_dc_f16c32_fp16
       decoder: microsoft/TRELLIS.2-4B/ckpts/tex_dec_next_dc_f16c32_fp16
