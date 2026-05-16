@@ -41,11 +41,11 @@ fi
 
 ssh star2 "sbatch" << EOF
 #!/bin/zsh
-#SBATCH --gres=${GPU_GRES}
+#SBATCH --gres=gpu:a40:${NUM_GPUS}
 #SBATCH --mem=$((64*NUM_GPUS))G
 #SBATCH --time=5-15:00
 #SBATCH --cpus-per-task=32
-#SBATCH --nodelist=cs-venus-15
+#SBATCH --nodelist=cs-venus-07
 #SBATCH --output=/localscratch/dya78/${NAME}.out
 #SBATCH -J ${NAME}
 
@@ -56,6 +56,10 @@ source ~/.zshrc
 cd /localscratch/dya78/TRELLIS.2-lightning
 conda activate trellis2
 git pull origin lightgen
+
+# Wandb auth isn't set up on per-node envs (~/.netrc missing). Offline mode logs
+# to disk; `wandb sync outputs/<run>/wandb/offline-run-*` can push later when ready.
+export WANDB_MODE=offline
 
 # Regenerate the oversampled split (data/ is gitignored).
 # TRAIN_SIZE=640 = 64 (global batch: 4 GPU * BS=8) * 10 unique → 20 train batches/epoch,
