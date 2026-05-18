@@ -133,7 +133,8 @@ def main():
     for rec in records:
         coords, emit, res = read_emission_voxel(rec.emission_voxel_path)
         pbr = _load_pbr_feats(rec.pbr_voxel_path) if any(
-            h.trainer_name == "EmissionVaeTrainer" for h in experiments
+            h.trainer_name in ("EmissionVaeTrainer", "EmissionPbrConditionalVaeTrainer")
+            for h in experiments
         ) else None
 
         panels: list[dict] = []

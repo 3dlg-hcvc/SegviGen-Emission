@@ -395,10 +395,41 @@ def load_vae_from_handle(handle: "ExperimentHandle", device: str = "cuda"):
             y = decoder(z).to("cpu").feats
             return y[:, :3]  # first 3 channels = emission
 
+    elif trainer == "EmissionPbrConditionalVaeTrainer":
+        # Surgical-finetune CVAE: encoder ingests emission only, decoder is
+        # conditioned on the pre-encoded PBR latent via channel-concat. For
+        # visualization we run the *same* pretrained PBR encoder live (it
+        # produces the same latent as the disk-cached `.npz` files used during
+        # training, since both come from `tex_enc_next_dc_f16c32_fp16`).
+        pbr_enc_path = handle.config["trainer"]["args"].get("finetune_ckpt", {}).get("encoder")
+        if pbr_enc_path is None:
+            raise ValueError(
+                "EmissionPbrConditionalVaeTrainer requires "
+                "trainer.args.finetune_ckpt.encoder in config.yaml to locate the "
+                "pretrained PBR encoder for visualization."
+            )
+        pbr_enc = trellis_models.from_pretrained(pbr_enc_path).eval().float().to(device)
+
+        @torch.no_grad()
+        def decode_emission(coords, emit_feats, pbr_feats):
+            if pbr_feats is None:
+                raise ValueError(
+                    "EmissionPbrConditionalVaeTrainer requires pbr_feats "
+                    "(raw [N,6] PBR voxel features) for the live PBR encoder"
+                )
+            bc = torch.zeros(coords.shape[0], 1, dtype=coords.dtype)
+            x_emit = sp.SparseTensor(emit_feats, torch.cat([bc, coords], dim=-1)).to(device)
+            z_emit = encoder(x_emit)
+            x_pbr = sp.SparseTensor(pbr_feats, torch.cat([bc, coords], dim=-1)).to(device)
+            z_pbr = pbr_enc(x_pbr)
+            z = z_emit.replace(torch.cat([z_emit.feats, z_pbr.feats], dim=-1))
+            return decoder(z).to("cpu").feats
+
     else:
         raise RuntimeError(
             f"unsupported trainer {trainer!r} for VAE visualization; "
-            f"expected EmissionVaeTrainer or EmissionPbrFinetuneTrainer"
+            f"expected EmissionVaeTrainer, EmissionPbrFinetuneTrainer, or "
+            f"EmissionPbrConditionalVaeTrainer"
         )
 
     return decode_emission
