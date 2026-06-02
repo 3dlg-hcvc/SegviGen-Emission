@@ -367,7 +367,43 @@ def build_logger(cfg: Dict[str, Any], output_dir: str):
     project = trainer_args.get("wandb_project", "trellis2")
     name = trainer_args.get("wandb_name")
     entity = trainer_args.get("wandb_entity")
-    logger = WandbLogger(project=project, name=name, entity=entity, save_dir=output_dir)
+
+    # Persist the wandb run ID across requeues so resumed jobs continue the
+    # same wandb run instead of starting a fresh one each cycle. Delete
+    # {output_dir}/wandb_run_id.txt to force a new run (e.g. when starting
+    # a new experiment from the same output_dir).
+    wandb_id_path = os.path.join(output_dir, "wandb_run_id.txt")
+    wandb_id = None
+    if os.path.exists(wandb_id_path):
+        try:
+            with open(wandb_id_path) as f:
+                wandb_id = (f.read().strip() or None)
+        except Exception:
+            wandb_id = None
+
+    logger = WandbLogger(
+        project=project,
+        name=name,
+        entity=entity,
+        save_dir=output_dir,
+        id=wandb_id,
+        resume="allow" if wandb_id else None,
+    )
+
+    # First-run only (rank 0): persist the auto-generated run ID for later
+    # requeues. Accessing `logger.experiment.id` triggers wandb.init() so
+    # the ID is available; non-rank-0 instances of WandbLogger return a
+    # dummy experiment whose .id is None, which we ignore.
+    if wandb_id is None and int(os.environ.get("SLURM_PROCID", "0")) == 0:
+        try:
+            new_id = logger.experiment.id
+            if new_id:
+                os.makedirs(output_dir, exist_ok=True)
+                with open(wandb_id_path, "w") as f:
+                    f.write(new_id)
+        except Exception:
+            pass
+
     config_payload = trainer_args.get("wandb_config", cfg)
     try:
         logger.experiment.config.update(config_payload, allow_val_change=True)
