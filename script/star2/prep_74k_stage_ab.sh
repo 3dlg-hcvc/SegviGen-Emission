@@ -51,6 +51,15 @@ LOG=\${LOCAL}/log/\${TS}-prep_74k_AB_rank${RANK}.log
 # Idempotent Blender install (sets BLENDER_PATH).
 . script/star2/prep_74k_install_blender.sh
 
+# Patch the site-packages o_voxel wrapper with the repo's (just-pulled) fixed
+# version. The conda-installed o_voxel/_C.so is reused, but its sibling
+# volumetic_attr.py historically lacked the emission_factor/texture parsing,
+# silently hardcoding zeros into the C++ call -> every emission voxel was 0
+# in the prior 74k run (see commit eec7840 + memory project_74k_zero_emission).
+# Idempotent: cp the same file every run is harmless.
+SP=\$(python -c "import site; print(site.getsitepackages()[0])")
+cp -v \${REPO}/o-voxel/o_voxel/convert/volumetic_attr.py "\${SP}/o_voxel/convert/volumetic_attr.py"
+
 rsync -av \${JUP}/metadata.csv                            \${LOCAL}/
 rsync -av \${JUP}/df_SomgProc_final.parquet               \${LOCAL}/
 rsync -av \${JUP}/data_splits_emissive_74k_pinned.json    \${LOCAL}/
