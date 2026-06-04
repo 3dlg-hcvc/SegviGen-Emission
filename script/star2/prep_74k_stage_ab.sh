@@ -51,14 +51,22 @@ LOG=\${LOCAL}/log/\${TS}-prep_74k_AB_rank${RANK}.log
 # Idempotent Blender install (sets BLENDER_PATH).
 . script/star2/prep_74k_install_blender.sh
 
-# Patch the site-packages o_voxel wrapper with the repo's (just-pulled) fixed
-# version. The conda-installed o_voxel/_C.so is reused, but its sibling
-# volumetic_attr.py historically lacked the emission_factor/texture parsing,
-# silently hardcoding zeros into the C++ call -> every emission voxel was 0
-# in the prior 74k run (see commit eec7840 + memory project_74k_zero_emission).
-# Idempotent: cp the same file every run is harmless.
+# Replace the site-packages o_voxel install with the known-good staged copy.
+# Two bugs in the originally-installed o_voxel produced the prior all-zero 74k
+# corpus:
+#   1. volumetic_attr.py wrapper hardcoded zeros into _C.textured_mesh_to_volumetric_attr_cpu
+#      (missing emission_factor/texture/filter/wrap parsing)
+#   2. C++ src/convert/volumetic_attr.cpp line 559 had roughnessMipmaps[mid]
+#      where emissiveMipmaps[mid] belongs — benign if (1) holds (zero input
+#      masks it) but SEGFAULTs on out-of-bounds reads once (1) is fixed and
+#      real emission data flows through.
+# Wrapper-only patch (commit d642342) hit the segfault on rank 0 smoke; need
+# to also replace the .so. Source: locally-built known-good staged at
+# /3dlg-jupiter-project/.../debug/o_voxel_local_staging/ — same Python ABI
+# (cp310-x86_64-linux-gnu), confirmed working on cs-venus-16. Idempotent.
 SP=\$(python -c "import site; print(site.getsitepackages()[0])")
-cp -v \${REPO}/o-voxel/o_voxel/convert/volumetic_attr.py "\${SP}/o_voxel/convert/volumetic_attr.py"
+rsync -ah --delete /3dlg-jupiter-project/lightgen/dataset/lightgen_74k/debug/o_voxel_local_staging/ "\${SP}/o_voxel/"
+ls -la "\${SP}/o_voxel/_C.cpython-310-x86_64-linux-gnu.so" "\${SP}/o_voxel/convert/volumetic_attr.py"
 
 rsync -av \${JUP}/metadata.csv                            \${LOCAL}/
 rsync -av \${JUP}/df_SomgProc_final.parquet               \${LOCAL}/
