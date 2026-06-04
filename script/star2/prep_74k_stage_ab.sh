@@ -15,11 +15,16 @@ NODE_ARG=""
 if [[ -n "${NODE}" ]]; then
     NODE_ARG="--nodelist=${NODE}"
 fi
+MEM="${5:-}"
+MEM_ARG=""
+if [[ -n "${MEM}" ]]; then
+    MEM_ARG="--mem=${MEM}"
+fi
 
 JOB_NAME="prep_74k_AB_r${RANK}"
 echo "Submitting ${JOB_NAME} (rank ${RANK}/${WORLD_SIZE}, limit='${LIMIT_FLAG}', node='${NODE}')"
 
-OUT=$(ssh star2 "sbatch --parsable ${NODE_ARG}" <<EOF
+OUT=$(ssh star2 "sbatch --parsable ${NODE_ARG} ${MEM_ARG}" <<EOF
 #!/bin/bash
 #SBATCH --partition=3dlg-hcvc-lab-short
 #SBATCH --nodes=1

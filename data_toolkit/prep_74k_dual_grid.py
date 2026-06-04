@@ -120,7 +120,16 @@ def main() -> int:
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
         futs = {ex.submit(_process_one, w): w[0] for w in work}
         for i, fut in enumerate(as_completed(futs), 1):
-            sha, ok, msg = fut.result()
+            # Worker process can be OOM-killed by slurm cgroup on pathological
+            # 74k samples that need >500 GB single-process for dual_grid. When
+            # that happens fut.result() raises BrokenProcessPool — catch + log
+            # as failure so the rank survives one bad sample instead of
+            # aborting the whole batch.
+            try:
+                sha, ok, msg = fut.result()
+            except Exception as e:
+                sha = futs[fut]
+                ok, msg = False, f"{type(e).__name__}: {str(e)[:120]}"
             if ok and msg == "skip":
                 skip += 1
             elif ok:
