@@ -556,7 +556,7 @@ voxelize_trimesh_pbr_impl(
                 sample_texture_mipmap(
                     emissiveTexture[mid],
                     H_emTex[mid], W_emTex[mid], 3,
-                    roughnessMipmaps[mid],
+                    emissiveMipmaps[mid],
                     uv.x(), uv.y(), mip_length, mipLevelOffset,
                     emissiveTextureFilter[mid], emissiveTextureWrap[mid],
                     emissive

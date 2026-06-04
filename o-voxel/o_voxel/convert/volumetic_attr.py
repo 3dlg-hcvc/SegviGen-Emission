@@ -516,6 +516,10 @@ def blender_dump_to_volumetric_attr(
         'alpha_texture': [],
         'alpha_texture_filter': [],
         'alpha_texture_wrap': [],
+        'emissive_factor': [],
+        'emissive_texture': [],
+        'emissive_texture_filter': [],
+        'emissive_texture_wrap': [],
     }
 
     def load_texture(pack):
@@ -599,7 +603,29 @@ def blender_dump_to_volumetric_attr(
         scene_buffers['alpha_texture'].append(alphaTexture)
         scene_buffers['alpha_texture_filter'].append(alphaTextureFilter)
         scene_buffers['alpha_texture_wrap'].append(alphaTextureWrap)
-    
+
+        emissiveColorFactor = material.get('emissiveColorFactor', [0.0, 0.0, 0.0])
+        emissiveStrength = material.get('emissiveStrengthFactor', 1.0)
+        emissiveFactor = torch.tensor(
+            [c * emissiveStrength for c in emissiveColorFactor[:3]],
+            dtype=torch.float32,
+        )
+        if material.get('emissiveColorTexture') is not None:
+            emissiveTexture, emissiveTextureFilter, emissiveTextureWrap = \
+                load_texture(material['emissiveColorTexture'])
+            if emissiveTexture.dim() == 3 and emissiveTexture.shape[2] == 4:
+                emissiveTexture = emissiveTexture[:, :, :3]
+            assert emissiveTexture.dim() == 3 and emissiveTexture.shape[2] == 3, \
+                f"Emissive texture must have 3 channels, but got shape {emissiveTexture.shape}"
+        else:
+            emissiveTexture = torch.tensor([])
+            emissiveTextureFilter = 0
+            emissiveTextureWrap = 0
+        scene_buffers['emissive_factor'].append(emissiveFactor)
+        scene_buffers['emissive_texture'].append(emissiveTexture)
+        scene_buffers['emissive_texture_filter'].append(emissiveTextureFilter)
+        scene_buffers['emissive_texture_wrap'].append(emissiveTextureWrap)
+
     for object in dump['objects']:
         triangles = torch.tensor(object['vertices'][object['faces']], dtype=torch.float32).reshape(-1, 3, 3) - aabb[0].reshape(1, 1, 3)
         normails = torch.tensor(object['normals'], dtype=torch.float32)
@@ -637,10 +663,10 @@ def blender_dump_to_volumetric_attr(
         scene_buffers["roughness_texture"],
         scene_buffers["roughness_texture_filter"],
         scene_buffers["roughness_texture_wrap"],
-        [torch.zeros(3, dtype=torch.float32) for _ in range(len(scene_buffers["base_color_texture"]))],
-        [torch.tensor([]) for _ in range(len(scene_buffers["base_color_texture"]))],
-        [0] * len(scene_buffers["base_color_texture"]),
-        [0] * len(scene_buffers["base_color_texture"]),
+        scene_buffers["emissive_factor"],
+        scene_buffers["emissive_texture"],
+        scene_buffers["emissive_texture_filter"],
+        scene_buffers["emissive_texture_wrap"],
         scene_buffers["alpha_mode"],
         scene_buffers["alpha_cutoff"],
         scene_buffers["alpha_factor"],
