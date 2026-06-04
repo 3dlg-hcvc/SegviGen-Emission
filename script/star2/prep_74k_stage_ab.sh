@@ -4,17 +4,22 @@
 # Stage A: Blender PBR dump. Stage B: voxelize_pbr + dual_grid.
 set -euo pipefail
 
-RANK="${1:?usage: $0 RANK WORLD_SIZE [LIMIT]}"
-WORLD_SIZE="${2:?usage: $0 RANK WORLD_SIZE [LIMIT]}"
+RANK="${1:?usage: $0 RANK WORLD_SIZE [LIMIT] [NODE]}"
+WORLD_SIZE="${2:?usage: $0 RANK WORLD_SIZE [LIMIT] [NODE]}"
 LIMIT_FLAG=""
 if [[ -n "${3:-}" ]]; then
     LIMIT_FLAG="--limit ${3}"
 fi
+NODE="${4:-}"
+NODE_ARG=""
+if [[ -n "${NODE}" ]]; then
+    NODE_ARG="--nodelist=${NODE}"
+fi
 
 JOB_NAME="prep_74k_AB_r${RANK}"
-echo "Submitting ${JOB_NAME} (rank ${RANK}/${WORLD_SIZE}, limit='${LIMIT_FLAG}')"
+echo "Submitting ${JOB_NAME} (rank ${RANK}/${WORLD_SIZE}, limit='${LIMIT_FLAG}', node='${NODE}')"
 
-OUT=$(ssh star2 "sbatch --parsable" <<EOF
+OUT=$(ssh star2 "sbatch --parsable ${NODE_ARG}" <<EOF
 #!/bin/bash
 #SBATCH --partition=3dlg-hcvc-lab-short
 #SBATCH --nodes=1
