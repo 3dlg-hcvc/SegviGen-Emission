@@ -25,7 +25,7 @@ OUT=$(ssh star2 "sbatch --parsable ${NODE_ARG}" <<EOF
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --mem=400G
+#SBATCH --mem=700G
 #SBATCH --time=1-12:00
 #SBATCH --nodelist=cs-venus-07,cs-venus-09,cs-venus-15,cs-venus-16
 #SBATCH --output=/localscratch/dya78/${JOB_NAME}.out
@@ -86,7 +86,7 @@ rsync -av \${JUP}/data_splits_emissive_74k_pinned.json    \${LOCAL}/
   # prep_74k_dual_grid.py keeps the parent's rank/world (it reads the unfiltered
   # parent metadata.csv and per-sample skips when no pickle exists).
   python data_toolkit/voxelize_pbr.py lightgen_74k --root \${LOCAL} --rank 0 --world_size 1 --max_workers 32 --resolution 256
-  python data_toolkit/prep_74k_dual_grid.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 16 --resolution 256 ${LIMIT_FLAG}
+  python data_toolkit/prep_74k_dual_grid.py --root \${LOCAL} --rank ${RANK} --world_size ${WORLD_SIZE} --workers 4 --resolution 256 ${LIMIT_FLAG}
   # Merge per-rank new_records/* into <artifact>/metadata.csv so downstream
   # encoders find their expected pbr_voxelized / emission_voxelized flags.
   python -c "import pandas as pd, glob, os; root='\${LOCAL}'
