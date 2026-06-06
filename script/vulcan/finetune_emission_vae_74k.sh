@@ -125,10 +125,12 @@ echo "======================================"
 # python/3.11.5, cuda/12.6, StdEnv/2023, gcc all present).
 #
 # IMPORTANT: sbatch runs with #!/bin/bash (NOT login shell), so /etc/profile
-# and /cvmfs/.../config/profile/bash.sh aren't auto-sourced and `module`
-# is not on PATH. Symptom when missing: "line N: module: command not found"
-# at submit-time, then `import cv2` (or torch, or anything from a module)
-# fails at training time. Source the cvmfs profile explicitly before loading.
+# and /cvmfs/.../config/profile/bash.sh aren't auto-sourced and the module
+# command is not on PATH. Symptom when missing: "line N: module: command
+# not found" in the slurm log, then cv2 (or torch, anything from a module)
+# fails to import at training time. Source the cvmfs profile explicitly.
+# (No backticks in this comment block: the parent launcher's heredoc is
+# unquoted, so backticks would be evaluated by the LOCAL submitter shell.)
 source /cvmfs/soft.computecanada.ca/config/profile/bash.sh
 module load StdEnv/2023 gcc python/3.11 cuda/12.6 arrow/21.0.0 opencv/4.13.0 sparsehash
 
