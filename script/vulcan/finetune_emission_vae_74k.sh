@@ -123,6 +123,13 @@ echo "======================================"
 # Modules — mirror fir's working stack; all available on vulcan (verified
 # via 'module spider' on vulcan2: arrow/21.0.0, opencv/4.13.0, sparsehash/2.0.4,
 # python/3.11.5, cuda/12.6, StdEnv/2023, gcc all present).
+#
+# IMPORTANT: sbatch runs with #!/bin/bash (NOT login shell), so /etc/profile
+# and /cvmfs/.../config/profile/bash.sh aren't auto-sourced and `module`
+# is not on PATH. Symptom when missing: "line N: module: command not found"
+# at submit-time, then `import cv2` (or torch, or anything from a module)
+# fails at training time. Source the cvmfs profile explicitly before loading.
+source /cvmfs/soft.computecanada.ca/config/profile/bash.sh
 module load StdEnv/2023 gcc python/3.11 cuda/12.6 arrow/21.0.0 opencv/4.13.0 sparsehash
 
 # Code was already synced to ${SYNCED_COMMIT} on the login node before this
