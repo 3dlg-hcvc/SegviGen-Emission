@@ -14,7 +14,14 @@ echo "Submitting job: ${NAME}"
 echo "Config: ${CONFIG}"
 echo "Output: ${OUTPUT_DIR}"
 
-ssh fir "sbatch" << EOF
+# Submit directly when already on a Slurm submit host (the fir login node — our
+# tmux-session workflow); fall back to `ssh fir sbatch` only when launched from
+# the local workstation. Running `ssh fir ...` ON fir fails with "Could not
+# resolve hostname fir" and silently submits nothing (printing a bogus
+# "Submitted" line), which is exactly the trap this avoids.
+if command -v sbatch >/dev/null 2>&1; then SUBMIT=(sbatch); else SUBMIT=(ssh fir sbatch); fi
+
+"${SUBMIT[@]}" << EOF
 #!/bin/bash
 #SBATCH --mail-user=yangdongchen1@gmail.com
 #SBATCH --mail-type=END
