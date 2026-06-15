@@ -118,6 +118,17 @@ Probe passes if it reaches a full val epoch without OOM and with sane `val/loss`
 
 Gotcha: `nvidia-smi` via a second `srun --jobid=<id> --overlap` is scoped to the overlap step's cgroup GPU devices — that subset is what you see, *not* the parent training step's full GRES binding. Don't conclude "only 1 GPU is used" from it; the Lightning progress bar (`N/N ... it/s` where N matches `total_batches/rank × ranks`) is the authoritative DDP-across-all-ranks signal.
 
+### Fir deployment (Alliance Canada H100)
+
+Deployed at `/scratch/dya78/TRELLIS.2-lightning/` (`lightgen` branch), venv at `env/`; fir launch scripts under `script/fir/`. Unlike star2, three deps are **not** plain pip installs:
+
+- **pyarrow** and **opencv** ship as Alliance *modules*, not wheels. Every fir job body must `module load StdEnv/2023 gcc python/3.11 cuda/12.6 arrow/21.0.0 opencv/4.13.0` **before** `source env/bin/activate`.
+- **diffusers** was missing from the env: `env/bin/pip install --no-index diffusers`.
+- **H100 node memory:** request `--mem=1024G` for a 4-GPU full node (= 4×256G). `--mem=1152G` is rejected ("Memory specification can not be satisfied"; allocatable cap is 1125G).
+- Pull code from origin to advance; never edit on the cluster (see the cluster-access skill).
+
+**PBR-VAE max batch size** (single H100 80GB, `EmissionPbrFinetuneTrainer`, fp16 + activation checkpointing): hard cap ≈ BS 88 on 1k data (BS 80 = 98% VRAM knife-edge; BS 96 OOMs). For 74k production (fatter voxel-count tail → +15–20% VRAM at the same BS), use **BS=48** (safe, ~76% on 1k) or BS=64 (aggressive — will occasionally OOM, needs `--requeue`). Always set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+
 ## Data Paths
 
 - **Data root:** `data/lightgen_test/` — repo-relative path that works on every host. The 10-sample dataset (parquet, emission voxels, PBR voxels, latents, splits) lives here as real files. The `data/` directory is gitignored. To deploy on a new host, copy/rsync `data/lightgen_test/` along with the repo (e.g. `rsync -av data/ host:/path/to/repo/data/`).
@@ -158,6 +169,13 @@ python data_toolkit/test_emission_vae_e2e.py         # test VAE encode/decode
 python data_toolkit/vis_emission_vae.py              # visualize VAE reconstructions
 python data_toolkit/vis_3d_emission_vae.py           # 3D interactive HTML visualization
 ```
+
+## Working conventions
+
+- **Visualizations: one HTML file with a sample dropdown**, not one file per sample. The pattern in `vis/vis_3d_*.py` (single HTML, embedded JSON, JS dropdown to switch samples) is the standard — don't emit N separate files.
+- **Label viz panels by what the method does, in plain terms**, not internal jargon. Mapping: channel-hijack / `emission_pbr_*` → **"Albedo → Emission"**; two-stream / `emission_vae_*` → **"Input/Output → Emission"**. Pass plain `--experiment "<plain name>=<path>"` labels (rendered as plain text).
+- **Name shared-utility modules descriptively** (`vis_utils.py`), not with a leading underscore (`_vis_common.py`). Reserve `_`-prefixed names for truly single-caller private helpers.
+- **Before finetuning a pretrained model, verify the architecture config matches the checkpoint first** — extract the arch params from the pretrained ckpt JSON and copy them verbatim into the training config (don't guess `num_blocks` etc.), then do a short test-run before launching. Repeated PBR-VAE finetune failures traced back to config/weight mismatch.
 
 ## Architecture
 
