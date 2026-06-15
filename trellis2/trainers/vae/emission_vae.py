@@ -54,6 +54,27 @@ class EmissionVaeTrainer(BasicTrainer):
         self._pretrained_pbr_encoder_path = pretrained_pbr_encoder
         self._pbr_encoder: Optional[torch.nn.Module] = None
 
+        # The frozen PBR encoder is registered lazily on the first training step
+        # (see _ensure_pbr_encoder), so it lands in saved checkpoints but is
+        # absent from the freshly-built module Lightning loads into on resume.
+        # Load non-strict so resuming a checkpoint that still carries
+        # `_pbr_encoder.*` keys does not raise; the encoder is frozen and reloaded
+        # from `pretrained_pbr_encoder` anyway. New checkpoints drop those keys
+        # via on_save_checkpoint below.
+        self.strict_loading = False
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        """Exclude the frozen PBR encoder from saved checkpoints.
+
+        It is reconstructed from `pretrained_pbr_encoder` on load, so persisting
+        it only bloats the checkpoint and (combined with lazy registration)
+        breaks strict resume. Stripping keeps checkpoints lean and loadable.
+        """
+        state_dict = checkpoint.get("state_dict")
+        if state_dict is not None:
+            for key in [k for k in state_dict if k.startswith("_pbr_encoder.")]:
+                del state_dict[key]
+
     def _ensure_pbr_encoder(self) -> Optional[torch.nn.Module]:
         """Lazily load the frozen PBR encoder on first use."""
         if self._pbr_encoder is not None:
