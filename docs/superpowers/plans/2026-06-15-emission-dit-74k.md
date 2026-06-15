@@ -62,6 +62,29 @@ ls /scratch/dya78/lightgen/lightgen_74k/thumbnails/*.png 2>/dev/null | wc -l
 ```
 Expected: ~73k shape `.npz`. For thumbnails — if the directory is absent or empty, STOP and resolve thumbnail generation before continuing (the DiT cannot be image-conditioned without them). Record the actual thumbnail directory name/path for use in Tasks 2/4.
 
+- [ ] **Step 3b: Verify emission voxels are NON-ZERO (cs-venus o_voxel regression)**
+
+Memory `project_74k_zero_emission_root_cause`: the 74k `emission_voxels` were once all-zero because cs-venus's `o_voxel` `_C.so` was broken (fixed by rsyncing a local-built `_C.so`). If the voxels Phase 1 encodes are all-zero, the entire encode→DiT chain learns all-black emission silently. Confirm the fixed (non-zero) voxels are what's on scratch — the VAE trained to val/loss 0.0097 and recon was visualized, which *suggests* non-zero, but verify directly before encoding. Run (on fir, after staging or directly on a `.vxz`):
+```bash
+cd /scratch/dya78/TRELLIS.2-lightning && source env/bin/activate
+python - <<'PY'
+import glob, os, numpy as np, sys, types
+for m in ("o_voxel.postprocess","o_voxel.rasterize"):
+    sys.modules.setdefault(m, types.ModuleType(m))
+import o_voxel
+vd = "/scratch/dya78/lightgen/lightgen_74k/emission_voxels_256"   # or staged copy
+fs = sorted(glob.glob(os.path.join(vd, "*.vxz")))[:20]
+nz = 0
+for f in fs:
+    _, attr = o_voxel.io.read_vxz(f, num_threads=4)
+    mx = attr["emissive"].float().max().item()
+    nz += mx > 0
+    print(os.path.basename(f), "emissive max =", mx)
+print(f"\n{nz}/{len(fs)} sampled voxels have non-zero emission")
+PY
+```
+Expected: a healthy fraction of the 20 sampled voxels have `emissive max > 0` (not 0/20). Note: many emission samples are legitimately sparse/dark, so *some* zeros are fine — but **0/20 non-zero means the broken-binary regression is present**: STOP and regenerate the emission voxels with a working `o_voxel` `_C.so` before Phase 1.
+
 - [ ] **Step 4: Pin the final VAE checkpoint**
 
 Run:

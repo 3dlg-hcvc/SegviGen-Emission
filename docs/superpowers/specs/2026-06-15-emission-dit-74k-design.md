@@ -202,9 +202,15 @@ fir launcher modeled on the existing 74k VAE fir launcher:
 
 ## 9. Open items to resolve during implementation
 
-1. **Phase 0 must confirm the 74k thumbnail/image directory** exists with PNGs —
+1. **Phase 0 must verify the 74k emission voxels are non-zero** before encoding.
+   Per memory `project_74k_zero_emission_root_cause`, a broken cs-venus `o_voxel`
+   `_C.so` once produced all-zero `emission_voxels`; encoding those would silently
+   train the DiT to all-black. The VAE's val/loss 0.0097 + visualized recon
+   suggest the fixed voxels are in place, but verify directly (spot-check
+   `emissive max > 0` on a sample) — 0/N non-zero ⇒ regenerate voxels first.
+2. **Phase 0 must confirm the 74k thumbnail/image directory** exists with PNGs —
    the only DiT input not exercised by VAE training.
-2. **Confirm `step0004485-0.0097.ckpt` is the run's final/best** on fir (run
+3. **Confirm `step0004485-0.0097.ckpt` is the run's final/best** on fir (run
    targeted 20k steps; best-val is step 4485).
-3. **`val_every_epochs` calibration** against the actual fir walltime cycle once
+4. **`val_every_epochs` calibration** against the actual fir walltime cycle once
    we know steps/sec from the probe.
