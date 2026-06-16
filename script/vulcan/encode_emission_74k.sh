@@ -20,6 +20,19 @@ LATENT_NAME="emission_pbr_vae_ft_74k"
 SCRATCH_74K="/scratch/dya78/lightgen/lightgen_74k"
 BRANCH="lightgen"
 
+# Parallelism: NSHARDS independent single-node jobs, each handling 1/NSHARDS of
+# the data (4 GPUs/node). Global rank = SHARD*4 + local_gpu; world_size =
+# NSHARDS*4. Each shard writes to local SSD and rsyncs its slice to shared
+# scratch (disjoint shas, so concurrent rsync to one dir is safe). The final
+# normalization stats are computed separately over scratch by
+# data_toolkit/aggregate_emission_stats.py (no GPU). NSHARDS=1 keeps the
+# original single-job behaviour incl. the in-body aggregate.
+GPUS=4
+NSHARDS="${NSHARDS:-1}"
+SHARD="${SHARD:-0}"
+WORLD=$((NSHARDS * GPUS))
+[ "${NSHARDS}" -gt 1 ] && NAME="${NAME}_s${SHARD}"
+
 # Submit from a vulcan login node (sbatch on PATH) or from the workstation.
 if command -v sbatch >/dev/null 2>&1; then
     SUBMIT=(sbatch)
@@ -99,14 +112,14 @@ set -o pipefail
   # 4 ranks, one per GPU, writing to the shared local save_dir.
   pids=()
   for r in 0 1 2 3; do
-    CUDA_VISIBLE_DEVICES=\$r python data_toolkit/encode_emission_pbrfinetune_dataset.py \\
+    CUDA_VISIBLE_DEVICES=\$r python -u data_toolkit/encode_emission_pbrfinetune_dataset.py \\
         --data_root \${DATA_ROOT} \\
         --parquet   \${DATA_ROOT}/df_SomgProc_final.parquet \\
         --vae_ckpt  ${VAE_CKPT} \\
         --vae_cfg   ${VAE_CFG} \\
         --latent_name ${LATENT_NAME} \\
         --resolution 256 \\
-        --rank \$r --world_size 4 &
+        --rank \$((${SHARD} * ${GPUS} + r)) --world_size ${WORLD} &
     pids+=(\$!)
   done
   # Bare 'wait' returns 0 even if a rank crashed, which would let the aggregate
@@ -120,15 +133,19 @@ set -o pipefail
     echo "ERROR: one or more encode ranks failed; aborting before aggregate."
     exit 1
   fi
-  # Aggregate stats once all shards exist (re-reads every .npz in save_dir).
-  python data_toolkit/encode_emission_pbrfinetune_dataset.py \\
-      --data_root \${DATA_ROOT} \\
-      --parquet   \${DATA_ROOT}/df_SomgProc_final.parquet \\
-      --vae_ckpt  ${VAE_CKPT} \\
-      --vae_cfg   ${VAE_CFG} \\
-      --latent_name ${LATENT_NAME} \\
-      --resolution 256 \\
-      --rank 0 --world_size 4 --aggregate_stats
+  # Aggregate stats in-body only for the single-job case. For sharded runs
+  # (NSHARDS>1) the shards write disjoint slices to scratch and stats are
+  # computed afterwards over scratch by data_toolkit/aggregate_emission_stats.py.
+  if [ ${NSHARDS} -eq 1 ]; then
+    python -u data_toolkit/encode_emission_pbrfinetune_dataset.py \\
+        --data_root \${DATA_ROOT} \\
+        --parquet   \${DATA_ROOT}/df_SomgProc_final.parquet \\
+        --vae_ckpt  ${VAE_CKPT} \\
+        --vae_cfg   ${VAE_CFG} \\
+        --latent_name ${LATENT_NAME} \\
+        --resolution 256 \\
+        --rank 0 --world_size ${WORLD} --aggregate_stats
+  fi
 } 2>&1 | tee "\${LOG}"
 ENC_RC=\${PIPESTATUS[0]}
 if [ \$ENC_RC -ne 0 ]; then
