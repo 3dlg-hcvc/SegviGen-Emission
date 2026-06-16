@@ -27,6 +27,9 @@ NODES="${NODES:-1}"
 BS="${BS:-8}"
 WALLTIME="${WALLTIME:-12:00:00}"
 NAME_SUFFIX="${NAME_SUFFIX:-_${NODES}node}"
+# MAX_STEPS: set for a bounded probe (e.g. MAX_STEPS=100) so the single-node
+# probe doesn't run the full schedule; unset for the real run.
+MAX_STEPS="${MAX_STEPS:-}"
 
 # Cluster-agnostic DiT config; the launcher overrides data paths + BS below.
 CONFIG="configs/gen/emission_dit_74k.yaml"
@@ -208,6 +211,7 @@ srun python -u train.py \\
     --num_gpus 4 \\
     --num_nodes \${SLURM_NNODES} \\
     --override trainer.args.batch_size_per_gpu=${BS} \\
+    ${MAX_STEPS:+--override trainer.args.max_steps=${MAX_STEPS}} \\
     --override dataset.args.data_root=\${DATA_ROOT} \\
     --override dataset.args.parquet_file=\${DATA_ROOT}/df_SomgProc_final.parquet \\
     --override dataset.args.split_json=\${DATA_ROOT}/data_splits_emissive_74k_stratified_voxonly.json \\
