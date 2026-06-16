@@ -46,9 +46,11 @@ dataset:
     split_json: data/lightgen_74k/data_splits_emissive_74k_stratified_voxonly.json
     skip_pbr_cond: true
     emission_normalization:
-      # >>> PLACEHOLDER — replace with Task 2 (Phase 1) aggregated stats <<<
-      mean: [REPLACE_WITH_32_VALUES_FROM_TASK2]
-      std:  [REPLACE_WITH_32_VALUES_FROM_TASK2]
+      # Computed over the 72,549 emission latents encoded by emission_pbr_vae_ft_74k
+      # (step0004485-0.0097.ckpt) on vulcan, 36M tokens. normalization_stats.json
+      # at .../emission_latents/emission_pbr_vae_ft_74k/.
+      mean: [-0.553737, 4.222673, -1.026066, -2.573774, 4.950769, -0.325638, -0.060735, 3.150868, -1.967537, 2.536849, 1.097444, -2.563186, 0.352068, -1.852891, -6.418897, -0.978384, -2.472492, 6.520401, 3.561587, 1.954493, 2.276291, -0.948635, -3.979991, -4.631300, -0.761635, 0.068295, 1.868609, -0.532501, 5.554095, 0.258499, -0.993373, -3.332468]
+      std: [4.249156, 3.315734, 3.646893, 3.397036, 4.646832, 2.978980, 3.610513, 4.266782, 3.352983, 4.120569, 3.355954, 4.275202, 2.947491, 3.328241, 4.455562, 3.317155, 2.959211, 4.051095, 3.303821, 3.084829, 3.070406, 3.416448, 3.285852, 3.802487, 3.711283, 4.373477, 4.059465, 2.847474, 3.417944, 4.622079, 2.174733, 3.747061]
     shape_normalization:
       # Production shape stats copied verbatim from the base DiT config
       # slat_flow_imgshape2tex_dit_1_3B_512_bf16.yaml (shape_slat_normalization).
