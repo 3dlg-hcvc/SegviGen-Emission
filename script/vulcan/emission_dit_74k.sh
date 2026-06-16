@@ -30,6 +30,13 @@ NAME_SUFFIX="${NAME_SUFFIX:-_${NODES}node}"
 # MAX_STEPS: set for a bounded probe (e.g. MAX_STEPS=100) so the single-node
 # probe doesn't run the full schedule; unset for the real run.
 MAX_STEPS="${MAX_STEPS:-}"
+# MEM: host RAM per node. Unlike the sparse-voxel VAE (which wanted the whole
+# node), this DiT runs in latent space — the model/optimizer live on the GPU and
+# host RAM only holds the dataloader workers + main procs. A concrete ~256G is
+# ample and keeps the 4 GPUs (not memory) as the billing-binding constraint in
+# the shared gpubase_bygpu partition, which schedules far better than --mem=0
+# (whole node, ~515G) that blocks node-sharing and inflates billing.
+MEM="${MEM:-256G}"
 
 # Cluster-agnostic DiT config; the launcher overrides data paths + BS below.
 CONFIG="configs/gen/emission_dit_74k.yaml"
@@ -84,12 +91,7 @@ echo "  Commit:   ${SYNCED_COMMIT} (synced on login node)"
 #SBATCH --gpus-per-node=l40s:4
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=12
-#SBATCH --mem=0
-# --mem=0 = whole-node memory. L40S nodes on vulcan have ~512 GB; we want it
-# all because activations + dataloader workers + 4 ranks compete for RSS.
-# Switch to a concrete value (e.g. 480G) if --mem=0 ever gets rejected by
-# the QoS on vulcan; do not lowball — see project_fir_pbr_vae_bs_sweep.md
-# for the OOM history.
+#SBATCH --mem=${MEM}
 #SBATCH --time=${WALLTIME}
 #SBATCH --output=%x-%j.out
 #SBATCH --open-mode=append
