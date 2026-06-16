@@ -179,6 +179,12 @@ echo ""
 # PYTORCH_ALLOC_CONF is the new one. Set both for fwd/bwd compatibility.
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# flex_gemm's shared autotune cache (~/.flex_gemm/autotune_cache.json) lives on
+# NFS home; FileLock is unreliable there, so concurrent ranks corrupted it
+# (JSONDecodeError "Extra data" on import -> all ranks crash). Disable cache
+# read+write so each rank autotunes in-memory (one-time startup cost, no race).
+export FLEX_GEMM_USE_AUTOTUNE_CACHE=0
+export FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
 
 # pipefail so the pipeline's exit reflects python's exit (not tee's).
 set -o pipefail
