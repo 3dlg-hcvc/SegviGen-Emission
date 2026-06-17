@@ -64,8 +64,14 @@ trainer:
   name: ImageConditionedSparseFlowMatchingCFGTrainer
   args:
     max_steps: 50000
-    batch_size_per_gpu: 8     # probe (Task 6) may bump to 16
-    batch_split: 2
+    batch_size_per_gpu: 8     # probe may bump to 16
+    # batch_split MUST be 1 with the elastic LinearMemoryController: the
+    # ElasticControllerCallback opens one record() window per optimizer step
+    # (on_train_batch_start..end), so all forwards in it must share input_size.
+    # With batch_split>1 the sub-batch forwards have different sparse token
+    # counts -> "Input size should not change for different ElasticModules"
+    # crash (elastic_utils.py:25). One 8-sample forward fits H100.
+    batch_split: 1
     optimizer:
       name: AdamW
       args:
