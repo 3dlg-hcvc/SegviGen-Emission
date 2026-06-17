@@ -412,6 +412,50 @@ def build_logger(cfg: Dict[str, Any], output_dir: str):
     return logger
 
 
+def build_checkpoint_callback(trainer_args: Dict[str, Any], ckpt_dir: str) -> ModelCheckpoint:
+    """Construct the run's ModelCheckpoint callback.
+
+    Two modes:
+      * Top-k val mode (``save_top_k`` set): keep the K best checkpoints by
+        ``monitor_metric`` (written at validation-epoch end) plus a ``last.ckpt``
+        for resume. ``last.ckpt`` is refreshed every ``ckpt_last_every_n_steps``
+        steps (default 200) so a hard crash loses at most that many steps; on a
+        graceful (SIGTERM) requeue the trainer's signal handler still saves exact
+        state. NOTE: never set this to 1 — rewriting the multi-GB checkpoint every
+        step blocks training on a Lustre write each step (~90% of wall-clock; see
+        CheckpointTimingCallback). The top-k save itself is independent of this
+        interval — it fires at validation-epoch end via the monitor metric.
+      * Legacy step-interval mode (``i_save`` set, no ``save_top_k``): keep all
+        checkpoints at the ``i_save`` step interval.
+    """
+    i_save = trainer_args.get("i_save")
+    save_top_k_cfg = trainer_args.get("save_top_k")
+    if save_top_k_cfg is not None:
+        monitor_metric = str(trainer_args.get("monitor_metric", "val/loss"))
+        monitor_mode = str(trainer_args.get("monitor_mode", "min")).lower()
+        if monitor_mode not in ("min", "max"):
+            raise ValueError(f"monitor_mode must be 'min' or 'max', got {monitor_mode!r}")
+        filename = "step{step:07d}-{" + monitor_metric + ":.4f}"
+        last_every_n_steps = int(trainer_args.get("ckpt_last_every_n_steps", 200))
+        return ModelCheckpoint(
+            dirpath=ckpt_dir,
+            filename=filename,
+            monitor=monitor_metric,
+            mode=monitor_mode,
+            save_top_k=int(save_top_k_cfg),
+            save_last=True,
+            every_n_train_steps=last_every_n_steps,
+            auto_insert_metric_name=False,
+        )
+    return ModelCheckpoint(
+        dirpath=ckpt_dir,
+        filename="step{step:07d}",
+        every_n_train_steps=(int(i_save) if i_save is not None else None),
+        save_last=True,
+        save_top_k=-1,
+    )
+
+
 def build_trainer(
     cfg: Dict[str, Any],
     output_dir: str,
@@ -452,42 +496,7 @@ def build_trainer(
     )
 
     ckpt_dir = os.path.join(output_dir, "ckpts")
-    i_save = trainer_args.get("i_save")
-    save_top_k_cfg = trainer_args.get("save_top_k")
-    if save_top_k_cfg is not None:
-        # Top-k validation-based checkpointing. Saves at the end of each
-        # validation epoch, keeping the K best checkpoints ranked by
-        # `monitor_metric` (default: "val/loss"). `last.ckpt` is always kept
-        # for resuming. `i_save` (step interval) is ignored in this mode.
-        monitor_metric = str(trainer_args.get("monitor_metric", "val/loss"))
-        monitor_mode = str(trainer_args.get("monitor_mode", "min")).lower()
-        if monitor_mode not in ("min", "max"):
-            raise ValueError(f"monitor_mode must be 'min' or 'max', got {monitor_mode!r}")
-        filename = "step{step:07d}-{" + monitor_metric + ":.4f}"
-        # every_n_train_steps=1 forces _defer_save_until_validation on every
-        # step; the deferred branch in ModelCheckpoint.on_validation_end then
-        # calls _save_last_checkpoint unconditionally each val. Without this,
-        # last.ckpt only refreshes when a top-k save fires (val improves), so
-        # once val plateaus last.ckpt stays frozen at the last best-val step.
-        checkpoint_cb = ModelCheckpoint(
-            dirpath=ckpt_dir,
-            filename=filename,
-            monitor=monitor_metric,
-            mode=monitor_mode,
-            save_top_k=int(save_top_k_cfg),
-            save_last=True,
-            every_n_train_steps=1,
-            auto_insert_metric_name=False,
-        )
-    else:
-        checkpoint_cb = ModelCheckpoint(
-            dirpath=ckpt_dir,
-            filename="step{step:07d}",
-            every_n_train_steps=(int(i_save) if i_save is not None else None),
-            save_last=True,
-            save_top_k=-1,
-        )
-    callbacks.append(checkpoint_cb)
+    callbacks.append(build_checkpoint_callback(trainer_args, ckpt_dir))
 
     mix_mode = trainer_args.get("mix_precision_mode")
     if mix_mode is None and trainer_args.get("fp16_mode") is not None:
