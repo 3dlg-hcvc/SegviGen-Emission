@@ -116,6 +116,12 @@ trainer:
     save_top_k: 1
     monitor_metric: val/loss
     monitor_mode: min
+    # last.ckpt is 20 GB; on fir Lustre a full write takes ~10-13 min. The
+    # dd5f896 default (refresh every 200 steps ~= 2 min) is far shorter than the
+    # write, so writes thrash and leave a 0-byte last.ckpt that crash-loops
+    # resume. 2000 steps (~20 min at 1.6 it/s) > write time -> each refresh
+    # completes cleanly. (Best-val top-k saves are the quality checkpoints.)
+    ckpt_last_every_n_steps: 2000
     wandb_enable: true
     wandb_project: emission-dit
     wandb_name: emission_dit_74k

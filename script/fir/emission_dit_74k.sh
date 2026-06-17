@@ -35,7 +35,10 @@ if command -v sbatch >/dev/null 2>&1; then SUBMIT=(sbatch); else SUBMIT=(ssh fir
 #SBATCH --mem=1024G
 #SBATCH --account=rrg-msavva
 #SBATCH --requeue
-#SBATCH --signal=B:SIGTERM@300
+# 25-min lead (not 5): the 20 GB last.ckpt save at walltime takes ~10-13 min on
+# fir Lustre; a 5-min window gets SIGKILLed mid-write -> 0-byte last.ckpt ->
+# crash-loop on resume. 1500s gives the save time to finish.
+#SBATCH --signal=B:SIGTERM@1500
 
 handle_timeout() {
     echo "Timeout signal received (5 min remaining). Stopping training gracefully..."
