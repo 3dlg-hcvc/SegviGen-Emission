@@ -7,7 +7,7 @@
 # Usage:  bash script/fir/encode_emission_74k.sh
 
 NAME="encode_emission_74k"
-VAE_CKPT="/scratch/dya78/TRELLIS.2-lightning/outputs/emission_pbr_vae_ft_74k/ckpts/step0004485-0.0097.ckpt"
+VAE_CKPT="/scratch/dya78/TRELLIS.2-lightning/outputs/emission_pbr_vae_ft_74k/ckpts/step0016816-0.0095.ckpt"
 VAE_CFG="/scratch/dya78/TRELLIS.2-lightning/outputs/emission_pbr_vae_ft_74k/config.yaml"
 LATENT_NAME="emission_pbr_vae_ft_74k"
 SCRATCH_74K="/scratch/dya78/lightgen/lightgen_74k"
@@ -48,12 +48,17 @@ DATA_ROOT=\${SLURM_TMPDIR}/lightgen_74k
 cd /scratch/dya78/TRELLIS.2-lightning
 mkdir -p log; TS=\$(date +%Y%m%d-%H%M%S); LOG="log/\${TS}-${NAME}.log"
 
+# flex_gemm's shared autotune cache (~/.flex_gemm/autotune_cache.json) lives on
+# NFS home; concurrent ranks can corrupt it (JSONDecodeError on import). Disable
+# cache read+write so each rank autotunes in-memory (one-time cost, no race).
+export FLEX_GEMM_USE_AUTOTUNE_CACHE=0
+export FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
 set -o pipefail
 {
   # 4 ranks, one per GPU, writing to the shared local save_dir.
   pids=()
   for r in 0 1 2 3; do
-    CUDA_VISIBLE_DEVICES=\$r python data_toolkit/encode_emission_pbrfinetune_dataset.py \\
+    CUDA_VISIBLE_DEVICES=\$r python -u data_toolkit/encode_emission_pbrfinetune_dataset.py \\
         --data_root \${DATA_ROOT} \\
         --parquet   \${DATA_ROOT}/df_SomgProc_final.parquet \\
         --vae_ckpt  ${VAE_CKPT} \\
@@ -75,7 +80,7 @@ set -o pipefail
     exit 1
   fi
   # Aggregate stats once all shards exist (re-reads every .npz in save_dir).
-  python data_toolkit/encode_emission_pbrfinetune_dataset.py \\
+  python -u data_toolkit/encode_emission_pbrfinetune_dataset.py \\
       --data_root \${DATA_ROOT} \\
       --parquet   \${DATA_ROOT}/df_SomgProc_final.parquet \\
       --vae_ckpt  ${VAE_CKPT} \\
