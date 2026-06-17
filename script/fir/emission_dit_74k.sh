@@ -8,6 +8,8 @@ CONFIG="configs/gen/emission_dit_74k.yaml"
 NAME="emission_dit_74k"
 OUTPUT_DIR="/scratch/dya78/TRELLIS.2-lightning/outputs/${NAME}"
 BRANCH="lightgen"
+# MAX_STEPS: set for a bounded probe (e.g. MAX_STEPS=100); unset for the real run.
+MAX_STEPS="${MAX_STEPS:-}"
 
 echo "Submitting job: ${NAME}"
 echo "Config: ${CONFIG}"
@@ -65,18 +67,26 @@ mkdir -p log; TS=\$(date +%Y%m%d-%H%M%S); LOG="log/\${TS}-${NAME}.log"
 
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# flex_gemm's shared autotune cache (~/.flex_gemm/autotune_cache.json) on NFS home
+# can be corrupted by concurrent ranks (JSONDecodeError on import). Disable cache
+# read+write so each rank autotunes in-memory (one-time cost, no race).
+export FLEX_GEMM_USE_AUTOTUNE_CACHE=0
+export FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
 set -o pipefail
 
-srun python train.py \
+# Process substitution (> >(tee ...)) so \$! is srun's PID, not tee's — the
+# SIGTERM trap must reach srun to checkpoint every rank on requeue.
+srun python -u train.py \
     --config ${CONFIG} \
     --output_dir ${OUTPUT_DIR} \
     --ckpt last \
     --num_gpus 4 \
+    ${MAX_STEPS:+--override trainer.args.max_steps=${MAX_STEPS}} \
     --override dataset.args.data_root=\${DATA_ROOT} \
     --override dataset.args.parquet_file=\${DATA_ROOT}/df_SomgProc_final.parquet \
     --override dataset.args.split_json=\${DATA_ROOT}/data_splits_emissive_74k_stratified_voxonly.json \
     --override dataset.args.thumbnail_dir=\${DATA_ROOT}/thumbnails \
-    2>&1 | tee "\${LOG}" &
+    > >(tee "\${LOG}") 2>&1 &
 TRAIN_PID=\$!
 wait \$TRAIN_PID
 EXIT_CODE=\$?
