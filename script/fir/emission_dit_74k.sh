@@ -10,6 +10,9 @@ OUTPUT_DIR="/scratch/dya78/TRELLIS.2-lightning/outputs/${NAME}"
 BRANCH="lightgen"
 # MAX_STEPS: set for a bounded probe (e.g. MAX_STEPS=100); unset for the real run.
 MAX_STEPS="${MAX_STEPS:-}"
+# WALLTIME: short (e.g. 1:00:00) for the probe backfills into queue gaps far
+# better than the 3h default; use the default for the real run.
+WALLTIME="${WALLTIME:-03:00:00}"
 
 echo "Submitting job: ${NAME}"
 echo "Config: ${CONFIG}"
@@ -23,7 +26,7 @@ if command -v sbatch >/dev/null 2>&1; then SUBMIT=(sbatch); else SUBMIT=(ssh fir
 #SBATCH --mail-type=END
 #SBATCH -J ${NAME}
 #SBATCH --gpus-per-node=h100:4
-#SBATCH --time=03:00:00
+#SBATCH --time=${WALLTIME}
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=12
