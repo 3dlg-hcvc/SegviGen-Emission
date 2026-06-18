@@ -237,18 +237,20 @@ def main():
 
         for exp in built:
             ds = exp["dit_cfg"]["dataset"]["args"]
+            skip_pbr_cond = bool(ds.get("skip_pbr_cond", False))
             emit_mean = torch.tensor(ds["emission_normalization"]["mean"])
             emit_std  = torch.tensor(ds["emission_normalization"]["std"])
-            pbr_mean  = torch.tensor(ds["pbr_normalization"]["mean"])
-            pbr_std   = torch.tensor(ds["pbr_normalization"]["std"])
+            # pbr_normalization is absent in channel-hijack (skip_pbr_cond) configs.
+            pbr_mean = pbr_std = None
+            if not skip_pbr_cond:
+                pbr_mean = torch.tensor(ds["pbr_normalization"]["mean"])
+                pbr_std  = torch.tensor(ds["pbr_normalization"]["std"])
             shape_mean = torch.tensor(ds["shape_normalization"]["mean"])
             shape_std  = torch.tensor(ds["shape_normalization"]["std"])
 
             emit_latent_name = ds["emission_latent_name"]
-            pbr_latent_name = ds["pbr_latent_name"]
+            pbr_latent_name = ds.get("pbr_latent_name")
             shape_latent_name = ds["shape_latent_name"]
-
-            skip_pbr_cond = bool(ds.get("skip_pbr_cond", False))
             z_emit_raw  = _load_latent(f"{data_root}/emission_latents/{emit_latent_name}/{rec.sha}.npz")
             z_shape_raw = _load_latent(f"{data_root}/shape_latents/{shape_latent_name}/{rec.sha}.npz")
             z_pbr_raw   = (None if skip_pbr_cond
