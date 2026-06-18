@@ -113,7 +113,20 @@ def load_samples(
     # --- Resolve sha list + per-sha extras from source ---------------------
     if select.startswith("sha:"):
         shas = [s.strip() for s in select[4:].split(",") if s.strip()]
+        # The sha list comes from the CLI, but glb_1k_path still lives in the
+        # parquet — read it (when source is a parquet) so the GLB panel resolves
+        # for sha-selected samples too, not just for "all"/"first:" selectors.
         glb_map: dict[str, str] = {}
+        if source.endswith(".parquet"):
+            try:
+                _df = pd.read_parquet(source, columns=["glb_1k_path"])
+            except (KeyError, ValueError):
+                _df = pd.read_parquet(source)
+            if _df.index.name is None and "sha256" in _df.columns:
+                _df = _df.set_index("sha256")
+            _df.index = _df.index.astype(str)
+            if "glb_1k_path" in _df.columns:
+                glb_map = _df["glb_1k_path"].to_dict()
     elif source.endswith(".json"):
         with open(source) as f:
             splits = json.load(f)
