@@ -207,13 +207,28 @@ def main():
 
     out_abs = os.path.abspath(args.out)
     out_dir = os.path.dirname(out_abs)
+    glb_assets_dir = os.path.join(out_dir, "assets", "glbs")
+    os.makedirs(glb_assets_dir, exist_ok=True)
+
+    def _stage_glb_copy(glb_path: str) -> str:
+        """Copy GLB into <out_dir>/assets/glbs/ and return a relative URL.
+
+        Real file copies (not symlinks) so the HTML+assets bundle is portable
+        to web servers like aspis where /local-scratch isn't visible.
+        """
+        import shutil as _sh
+        basename = os.path.basename(glb_path)
+        dst = os.path.join(glb_assets_dir, basename)
+        if not os.path.exists(dst):
+            _sh.copy2(glb_path, dst)
+        return f"assets/glbs/{basename}"
 
     samples_out = []
     for rec in records:
         coords, gt_emit, res = read_emission_voxel(rec.emission_voxel_path)
 
         panels = []
-        glb_rel_url = os.path.relpath(rec.glb_path, out_dir) if rec.glb_path else None
+        glb_rel_url = _stage_glb_copy(rec.glb_path) if rec.glb_path else None
         panels.append({"kind": "glb", "data": make_glb_panel_data(glb_rel_url, False),
                        "caption": "", "label": "GLB"})
         panels.append({"kind": "voxel",
@@ -233,16 +248,23 @@ def main():
             pbr_latent_name = ds["pbr_latent_name"]
             shape_latent_name = ds["shape_latent_name"]
 
+            skip_pbr_cond = bool(ds.get("skip_pbr_cond", False))
             z_emit_raw  = _load_latent(f"{data_root}/emission_latents/{emit_latent_name}/{rec.sha}.npz")
-            z_pbr_raw   = _load_latent(f"{data_root}/pbr_latents/{pbr_latent_name}/{rec.sha}.npz")
             z_shape_raw = _load_latent(f"{data_root}/shape_latents/{shape_latent_name}/{rec.sha}.npz")
+            z_pbr_raw   = (None if skip_pbr_cond
+                           else _load_latent(f"{data_root}/pbr_latents/{pbr_latent_name}/{rec.sha}.npz"))
 
             def _norm(st, mu, sd): return st.replace((st.feats - mu.to(st.feats.device)) / sd.to(st.feats.device))
 
             z_emit_n  = _norm(z_emit_raw,  emit_mean,  emit_std).to(DEVICE)
-            z_pbr_n   = _norm(z_pbr_raw,   pbr_mean,   pbr_std).to(DEVICE)
             z_shape_n = _norm(z_shape_raw, shape_mean, shape_std).to(DEVICE)
-            concat_cond = z_emit_n.replace(torch.cat([z_shape_n.feats, z_pbr_n.feats], dim=-1))
+            if skip_pbr_cond:
+                # Channel-hijack DiT: concat_cond = shape only (32ch); DiT input = 32 (x_t) + 32 (shape) = 64.
+                concat_cond = z_emit_n.replace(z_shape_n.feats)
+                z_pbr_n = None
+            else:
+                z_pbr_n = _norm(z_pbr_raw, pbr_mean, pbr_std).to(DEVICE)
+                concat_cond = z_emit_n.replace(torch.cat([z_shape_n.feats, z_pbr_n.feats], dim=-1))
 
             thumb = os.path.join(data_root, "thumbnails", f"{rec.sha}.png")
             if not os.path.exists(thumb):
@@ -269,7 +291,11 @@ def main():
             from trellis2.modules import sparse as sp
             bc = torch.zeros(coords.shape[0], 1, dtype=coords.dtype)
             x_gt = sp.SparseTensor(gt_emit, torch.cat([bc, coords], dim=-1)).to(DEVICE)
-            pred = exp["decode_from_latent"](x_gt, z_dit_raw, z_pbr_raw)
+            # In skip_pbr_cond mode the trainer is EmissionPbrFinetuneTrainer and
+            # the decoder ignores z_pbr_raw — pass z_dit_raw as a stand-in to
+            # satisfy the signature.
+            _z_pbr_for_decode = z_dit_raw if skip_pbr_cond else z_pbr_raw
+            pred = exp["decode_from_latent"](x_gt, z_dit_raw, _z_pbr_for_decode)
             l1 = compute_emission_l1(coords, pred, coords, gt_emit)
             panels.append({
                 "kind": "voxel",

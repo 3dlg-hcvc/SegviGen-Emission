@@ -12,7 +12,7 @@ ssh star2 "sbatch" << EOF
 #SBATCH --mem=64G
 #SBATCH --time=5-15:00
 #SBATCH --cpus-per-task=32
-#SBATCH --nodelist=cs-venus-16
+#SBATCH --nodelist=cs-venus-15
 #SBATCH --output=/localscratch/dya78/${NAME}.out
 #SBATCH -J ${NAME}
 
