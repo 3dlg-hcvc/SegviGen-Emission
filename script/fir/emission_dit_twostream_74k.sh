@@ -75,13 +75,34 @@ cd /scratch/dya78/TRELLIS.2-lightning
 git fetch origin ${BRANCH} && git checkout ${BRANCH} && git pull --ff-only origin ${BRANCH}
 source /scratch/dya78/TRELLIS.2-lightning/env/bin/activate
 
-# Probe reads latents straight from persistent /scratch (no SSD staging).
-DATA_ROOT=${SCRATCH_74K}
+EMIT_SUB="emission_latents/emission_vae_twostream_74k"
+PBR_SUB="pbr_latents/tex_enc_next_dc_f16c32_fp16_256"
+SHAPE_SUB="shape_latents/shape_enc_next_dc_f16c32_fp16_256"
 
-# Fail fast if the encode prereq hasn't produced both latent streams. Use
+# Data I/O. Full run (STAGE=1, default) rsyncs the 3 latent streams + thumbnails
+# to local SSD so training does sequential SSD reads instead of hammering Lustre
+# with 73k*3 small-file random reads for days (rsync runs here on the COMPUTE
+# node, not the login node). Probe can set STAGE=0 to read /scratch directly
+# (fine for ~100 steps; avoids the one-time stage).
+if [ -n "\$SLURM_TMPDIR" ] && [ "\${STAGE:-1}" = "1" ]; then
+    DATA_ROOT=\${SLURM_TMPDIR}/lightgen_74k
+    echo "Staging latents to local SSD: \${DATA_ROOT}"
+    for sub in "\${EMIT_SUB}" "\${PBR_SUB}" "\${SHAPE_SUB}" "thumbnails"; do
+        mkdir -p "\${DATA_ROOT}/\$(dirname \${sub})"
+        rsync -ah "${SCRATCH_74K}/\${sub}" "\${DATA_ROOT}/\$(dirname \${sub})/"
+    done
+    cp "${SCRATCH_74K}/df_SomgProc_final.parquet" "\${DATA_ROOT}/"
+    cp "${SCRATCH_74K}/data_splits_emissive_74k_stratified_voxonly.json" "\${DATA_ROOT}/"
+    echo "Staging complete: \$(date)"
+else
+    DATA_ROOT=${SCRATCH_74K}
+    echo "Reading latents directly from persistent /scratch: \${DATA_ROOT}"
+fi
+
+# Fail fast if the encode prereq hasn't produced all three latent streams. Use
 # find -print -quit (NOT ls *.npz): at 74k a glob expands ~72k filenames onto
 # the command line and blows ARG_MAX -> false "missing" -> spurious abort.
-for d in "emission_latents/emission_vae_twostream_74k" "pbr_latents/tex_enc_next_dc_f16c32_fp16_256" "shape_latents/shape_enc_next_dc_f16c32_fp16_256"; do
+for d in "\${EMIT_SUB}" "\${PBR_SUB}" "\${SHAPE_SUB}"; do
     if [ -z "\$(find \${DATA_ROOT}/\${d} -maxdepth 1 -name '*.npz' -print -quit 2>/dev/null)" ]; then
         echo "ERROR: missing latents at \${DATA_ROOT}/\${d} — run encode_twostream_dit_latents_74k.sh first."; exit 1
     fi
