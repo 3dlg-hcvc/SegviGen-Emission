@@ -11,12 +11,9 @@
 #   mismatch); all 30 transformer blocks are still loaded. This 96-ch recipe is
 #   the one validated at 10-sample overfit (emission_dit_10sample_overfit.yaml).
 #
-# PLACEHOLDER STATS: emission_normalization and pbr_normalization below are
-# placeholders. Replace with the arrays printed by
-#   script/fir/encode_twostream_dit_latents_74k.sh
-# (written to emission_latents/emission_vae_twostream_74k/normalization_stats.json
-#  and pbr_latents/tex_enc_next_dc_f16c32_fp16_256/normalization_stats.json).
-# shape_normalization IS correct (production shape latents, copied from baseline).
+# Normalization: emission + PBR stats below are the real 74k values from
+# script/fir/encode_twostream_dit_latents_74k.sh (fir job 44913544; 36M tokens /
+# 72,549 samples each). shape_normalization is the production shape-latent stats.
 
 models:
   denoiser:
@@ -51,15 +48,13 @@ dataset:
     split_json: data/lightgen_74k/data_splits_emissive_74k_stratified_voxonly.json
     skip_pbr_cond: false
     emission_normalization:
-      # PLACEHOLDER (channel-hijack 74k stats as a stand-in) — REPLACE with the
-      # two-stream emission_vae_twostream_74k stats from the encode job.
-      mean: [-0.933585, 4.152558, -2.377601, -2.273196, 5.057539, -0.489705, -0.073768, 3.512470, -1.794249, 2.732491, 0.866541, -3.510263, 0.939064, -2.189065, -6.603068, -0.933373, -2.646374, 6.744867, 3.001588, 1.330736, 2.765167, -1.726918, -3.423802, -4.937253, -0.551379, 0.183507, 2.175160, -0.621138, 5.458714, -0.123712, -1.424994, -3.235051]
-      std: [4.847950, 3.770887, 4.488286, 3.704051, 5.249761, 3.263523, 4.075392, 4.792339, 3.707109, 4.521730, 3.590725, 4.916586, 3.322254, 3.698352, 4.937610, 3.736450, 3.177211, 4.484698, 3.551457, 3.454334, 3.543492, 4.004798, 3.582789, 4.191025, 4.065111, 4.972800, 4.425003, 3.298694, 3.850369, 4.945311, 2.543228, 4.079315]
+      # Two-stream emission_vae_twostream_74k latents (36M tokens / 72,549 samples).
+      mean: [-2.429359, -5.260138, 4.922578, 4.205037, -6.231251, 4.583925, 0.699208, 1.828208, 0.547576, 7.753712, -1.188707, 0.678855, -3.529652, 4.154868, -0.788858, -2.803219, -0.601168, 3.793408, -3.256456, 5.759635, -2.771214, 3.330337, 2.187806, -2.638081, -2.810187, 0.595176, -0.414438, -2.480853, 0.819716, -4.724916, 1.519547, -0.486408]
+      std: [3.174798, 3.665874, 4.037838, 5.902186, 4.742224, 4.332126, 4.585951, 3.829938, 3.402300, 4.543265, 4.512951, 5.499556, 4.381903, 3.943183, 4.374763, 3.875302, 3.901465, 4.898321, 4.622261, 5.222077, 5.672593, 4.431832, 4.707246, 4.159581, 4.126579, 3.706660, 3.738877, 3.004374, 3.846312, 5.567358, 3.603349, 3.242927]
     pbr_normalization:
-      # PLACEHOLDER (10-sample pbr stats) — REPLACE with the 74k
-      # tex_enc_next_dc_f16c32_fp16_256 stats from the encode job.
-      mean: [3.375665, 3.428288, 1.531353, 0.059129, 0.988242, -0.63385, 0.556706, -0.423068, -0.066475, -0.036579, -0.408831, 0.220295, 0.064344, -0.530986, -1.468565, -0.350094, -1.726752, 2.711517, 0.712479, 2.799481, -0.140686, 1.882107, -1.428382, -2.065538, 0.966991, 0.674866, 0.098693, -0.003365, 2.060131, 0.287017, -0.972509, -1.687052]
-      std: [2.943756, 2.948857, 2.924237, 2.867811, 2.91679, 2.228959, 2.505883, 2.77452, 2.733974, 2.760734, 2.318266, 3.20612, 3.06421, 2.503504, 2.861791, 3.424922, 2.357528, 2.888028, 3.425426, 2.579271, 3.29478, 2.91707, 4.058385, 2.600306, 2.841796, 2.564054, 2.465189, 2.301706, 3.253912, 2.539903, 2.792622, 2.538011]
+      # Production tex_enc_next_dc_f16c32_fp16_256 latents over the same 72,549 samples.
+      mean: [3.428170, 3.294830, 1.302273, 0.800814, 0.677756, -0.597211, 0.802017, -0.818352, 0.340080, -0.312021, -0.690820, -0.266351, -0.277867, -0.082624, -0.787140, -0.214899, -1.474704, 2.119771, -0.327685, 2.320879, 0.280001, 1.480567, -1.361856, -1.629177, 1.729373, 0.761835, -0.185218, 0.176544, 1.753292, 0.242445, -1.421205, -1.279988]
+      std: [2.797216, 3.040730, 2.931041, 2.799409, 3.148016, 2.298694, 2.451205, 2.988649, 2.952048, 2.797183, 2.417597, 3.386020, 3.138244, 2.618276, 3.278343, 3.141690, 2.578097, 3.226009, 3.365666, 2.511631, 2.916322, 2.940704, 3.389722, 2.695656, 2.877646, 2.476421, 2.704774, 2.369544, 3.045444, 2.568191, 2.937541, 2.816936]
     shape_normalization:
       # Production shape stats copied verbatim from emission_dit_74k.yaml
       # (slat_flow_imgshape2tex_dit_1_3B_512_bf16 shape_slat_normalization). The
