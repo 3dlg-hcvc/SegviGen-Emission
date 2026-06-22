@@ -26,7 +26,7 @@ def test_resample_hits_caps_and_masks():
     position_map = np.zeros((2, 2, 3), dtype=np.float32)
     position_map[0, 0] = centers[0] * 2.0                # exact hit -> voxel 0
     position_map[0, 1] = centers[1] * 2.0                # exact hit -> voxel 1
-    position_map[1, 0] = centers[0] * 2.0 + 0.1          # 0.1 voxel-frame away -> beyond cap
+    position_map[1, 0] = centers[0] * 2.0 + 0.1          # 0.1 somage-frame offset (~0.087 L2 in voxel frame, >> cap)
     position_map[1, 1] = centers[0] * 2.0                # masked out below
     mask = np.array([[True, True], [True, False]])
     uv, miss = resample_to_uv(coords, emission, position_map, mask, grid=256, cap_voxels=1.5)
@@ -35,3 +35,13 @@ def test_resample_hits_caps_and_masks():
     assert np.allclose(uv[1, 0], [0.0, 0.0, 0.0])        # capped
     assert np.allclose(uv[1, 1], [0.0, 0.0, 0.0])        # masked
     assert abs(miss - 1.0 / 3.0) < 1e-6                  # 1 of 3 masked-True pixels capped
+
+
+def test_resample_empty_voxels_all_miss():
+    coords = np.zeros((0, 3), dtype=np.int32)
+    emission = np.zeros((0, 3), dtype=np.float32)
+    position_map = np.zeros((1, 2, 3), dtype=np.float32)
+    mask = np.array([[True, True]])
+    uv, miss = resample_to_uv(coords, emission, position_map, mask)
+    assert miss == 1.0
+    assert np.allclose(uv, 0.0)

@@ -32,8 +32,10 @@ def resample_to_uv(coords, emission, position_map, mask, grid: int = 256,
     uv = np.zeros((H, W, 3), dtype=np.float32)
     sel = mask.astype(bool)
     n = int(sel.sum())
-    if n == 0 or len(coords) == 0:
+    if n == 0:
         return uv, 0.0
+    if len(coords) == 0:
+        return uv, 1.0
     centers = voxel_centers(np.asarray(coords), grid)
     tree = cKDTree(centers)
     q = somage_to_voxel_frame(position_map[sel].astype(np.float64))   # [n,3]
