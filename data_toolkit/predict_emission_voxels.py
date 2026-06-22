@@ -81,7 +81,7 @@ def main():
     ap.add_argument("--thumbnail_dir", default=None)
     ap.add_argument("--shas", default=None, help="comma-separated shas (overrides split/parquet)")
     ap.add_argument("--split", default="val")
-    ap.add_argument("--n", type=int, default=6)
+    ap.add_argument("--n", type=str, default="6")
     ap.add_argument("--resolution", type=int, default=256)
     ap.add_argument("--guidance", type=float, default=3.0)
     ap.add_argument("--steps", type=int, default=50)
@@ -99,7 +99,9 @@ def main():
 
     # ---- pick samples ----
     if args.shas:
-        sel = [s for s in args.shas.split(",") if s][: args.n]
+        shas_list = [s for s in args.shas.split(",") if s]
+        n_sel = len(shas_list) if str(args.n) == "all" else int(args.n)
+        sel = shas_list[:n_sel]
     else:
         import pandas as pd
         df = pd.read_parquet(parquet, columns=["success"])
@@ -107,7 +109,8 @@ def main():
         shas = [str(x) for x in df.index]
         sp_ = json.load(open(split_json))[args.split]
         idx = sp_["indices"] if isinstance(sp_, dict) else sp_
-        sel = [shas[i] for i in idx[: args.n]]
+        n_sel = len(idx) if str(args.n) == "all" else int(args.n)
+        sel = [shas[i] for i in idx[:n_sel]]
     p(f"Samples: {len(sel)}")
 
     # ---- configs / norm ----
