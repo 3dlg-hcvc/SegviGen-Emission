@@ -1,15 +1,8 @@
 #!/usr/bin/env python3
-"""Quick prediction viz for the (possibly partially-trained) 74k emission DiT.
-
-For a few samples: encode the GT emission voxels (this populates the VAE's
-subdivision cache, which the decoder needs), then for each sample render
-  [ input image | GT (VAE recon) | DiT prediction ]
-where the DiT prediction is a CFG flow-matching sample conditioned on the DINOv3
-image feature + the shape latent (skip_pbr_cond concat), decoded through the same
-encoder structure. Per-sample L1 vs the VAE-recon target is printed.
-
-Needs raw emission voxels (DATA_ROOT/emission_voxels_256/{sha}.vxz) + latents +
-thumbnails. Arg-driven; defaults point at the fir paths.
+"""Emission DiT inference: runs the emission DiT and saves per-shape predicted
+emission voxels (coords, pred, gt_recon, gt_emission) as npz files under
+<out_dir>/pred_voxels/. With --gt_only, saves only coords+gt_emission (CPU,
+no model or DiT config needed).
 """
 from __future__ import annotations
 import argparse, json, os, sys, types
@@ -53,18 +46,6 @@ def pack_emission_as_pbr(x):
     pad = torch.tensor([[PAD_METALLIC, PAD_ROUGHNESS, PAD_ALPHA]],
                        device=emit.device, dtype=emit.dtype).expand(emit.shape[0], -1)
     return x.replace(torch.cat([emit, pad], dim=-1))
-
-
-def max_proj_rgb(sparse_t, res=256):
-    c = sparse_t.coords[:, 1:].long().cpu()
-    feats = (sparse_t.feats[:, :3].cpu() * 0.5 + 0.5).clamp(0, 1)
-    img = torch.zeros(res, res, 3); depth = torch.full((res, res), -1.0)
-    mag = feats.norm(dim=-1)
-    for i in range(c.shape[0]):
-        r, col = c[i, 1].item(), c[i, 0].item()
-        if 0 <= r < res and 0 <= col < res and mag[i].item() > depth[r, col].item():
-            depth[r, col] = mag[i].item(); img[r, col] = feats[i]
-    return img.numpy()
 
 
 def main():
@@ -113,13 +94,13 @@ def main():
         sel = [shas[i] for i in idx[:n_sel]]
     p(f"Samples: {len(sel)}")
 
-    # ---- configs / norm ----
-    dit_cfg = yaml.safe_load(open(dit_cfg_path))
-    ds = dit_cfg["dataset"]["args"]
-    emit_mean = torch.tensor(ds["emission_normalization"]["mean"]); emit_std = torch.tensor(ds["emission_normalization"]["std"])
-    shape_mean = torch.tensor(ds["shape_normalization"]["mean"]);   shape_std = torch.tensor(ds["shape_normalization"]["std"])
-
     if not args.gt_only:
+        # ---- configs / norm ----
+        dit_cfg = yaml.safe_load(open(dit_cfg_path))
+        ds = dit_cfg["dataset"]["args"]
+        emit_mean = torch.tensor(ds["emission_normalization"]["mean"]); emit_std = torch.tensor(ds["emission_normalization"]["std"])
+        shape_mean = torch.tensor(ds["shape_normalization"]["mean"]);   shape_std = torch.tensor(ds["shape_normalization"]["std"])
+
         # ---- DINOv3 ----
         p("Loading DINOv3...")
         dino_cfg = dit_cfg["trainer"]["args"]["image_cond_model"]["args"]
@@ -185,9 +166,10 @@ def main():
 
         gt_dec = dec(z_enc)
         dit_dec = dec(z_dit)
-        # shared-coords gate: decode must align with the encoded GT coords
-        assert gt_dec.coords.shape[0] == dit_dec.coords.shape[0] == coords.shape[0], \
-            f"coord mismatch {sha}: gt_dec={gt_dec.coords.shape[0]} dit={dit_dec.coords.shape[0]} raw={coords.shape[0]}"
+        # shared-coords gate: decode must align in element order, not just count
+        assert torch.equal(gt_dec.coords, dit_dec.coords) and \
+               torch.equal(gt_dec.coords[:, 1:], coords.to(gt_dec.coords.device)), \
+            f"coord order mismatch {sha}: gt_dec={tuple(gt_dec.coords.shape)} dit_dec={tuple(dit_dec.coords.shape)} raw={tuple(coords.shape)}"
 
         np.savez(os.path.join(out_vox_dir, f"{sha}.npz"),
                  coords=coords_np,

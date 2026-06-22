@@ -26,7 +26,7 @@ if command -v sbatch >/dev/null 2>&1; then SUBMIT=(sbatch); else SUBMIT=(ssh fir
 echo "Node: \$(hostname)  Started: \$(date)"
 module load StdEnv/2023 gcc python/3.11 cuda/12.6 arrow/21.0.0 opencv/4.13.0 sparsehash
 cd ${REPO}
-git fetch origin ${BRANCH} >/dev/null 2>&1 && git checkout ${BRANCH} >/dev/null 2>&1 && git pull --ff-only origin ${BRANCH} 2>&1 | tail -1
+git fetch origin ${BRANCH} && git checkout ${BRANCH} && git pull --ff-only origin ${BRANCH} || { echo "GIT_SYNC_FAILED — aborting"; exit 1; }
 source ${REPO}/env/bin/activate
 export FLEX_GEMM_USE_AUTOTUNE_CACHE=0 FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
 python -u data_toolkit/predict_emission_voxels.py \\
