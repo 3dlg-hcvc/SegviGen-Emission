@@ -46,3 +46,94 @@ def resample_to_uv(coords, emission, position_map, mask, grid: int = 256,
     vals[over] = 0.0
     uv[sel] = vals
     return uv, float(over.mean())
+
+
+import os
+import argparse
+import pandas as pd
+import imageio.v2 as imageio
+
+SOMAGE_ROOT_DEFAULT = "/cs/3dlg-falas/project/omages/datasets/TexVerse/lightgen/somages_corresp_dc80k"
+SRC_PARQUET_DEFAULT = "/local-scratch/localhome/dya78/lightgen_74k_staging/df_SomgProc_final.parquet"
+
+
+def load_somage_geom(sha, meta_df, somage_root):
+    """Return (position_map [H,W,3] float in [-1,1], mask [H,W] bool) for a sha.
+    Mirrors evaluate_texge.load_somage_full's decode exactly."""
+    ditem_dir = meta_df.loc[sha, "ditem_dir"]
+    raw = np.load(os.path.join(somage_root, ditem_dir, "somage.npz"))
+    occ = raw["occupancy"]
+    mask = (occ[..., 0] if occ.ndim == 3 else occ).astype(bool)
+    position_map = raw["position"].astype(np.float32) / 65535.0 * 2 - 1
+    return position_map, mask
+
+
+def build_slim_metadata(src_parquet, shas, out_parquet):
+    """Slim subset (ditem_dir, glb_1k_path) indexed by sha — fast per-shape reads."""
+    df = pd.read_parquet(src_parquet, columns=["ditem_dir", "glb_1k_path"])
+    slim = df.loc[df.index.intersection(shas), ["ditem_dir", "glb_1k_path"]].copy()
+    os.makedirs(os.path.dirname(out_parquet) or ".", exist_ok=True)
+    slim.to_parquet(out_parquet)
+    return slim
+
+
+def bridge_one(npz_path, source, meta_df, somage_root, out_dir, cap_voxels=1.5):
+    """Resample one shape's voxels -> UV pred_emission.png. Returns miss-fraction."""
+    sha = os.path.splitext(os.path.basename(npz_path))[0]
+    d = np.load(npz_path)
+    coords = d["coords"]
+    emission = np.asarray(d[source], dtype=np.float32)
+    emission = np.clip(emission, 0.0, 1.0)
+    position_map, mask = load_somage_geom(sha, meta_df, somage_root)
+    uv, miss = resample_to_uv(coords, emission, position_map, mask, cap_voxels=cap_voxels)
+    shape_dir = os.path.join(out_dir, sha)
+    os.makedirs(shape_dir, exist_ok=True)
+    imageio.imwrite(os.path.join(shape_dir, "pred_emission.png"),
+                    (np.clip(uv, 0, 1) * 255).astype(np.uint8))
+    return miss
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--pred_voxels_dir", required=True)
+    ap.add_argument("--metadata", default=None,
+                    help="Slim parquet (ditem_dir, glb_1k_path) indexed by sha. "
+                         "If missing, built from --src_parquet over the found shas.")
+    ap.add_argument("--src_parquet", default=SRC_PARQUET_DEFAULT)
+    ap.add_argument("--somage_root", default=SOMAGE_ROOT_DEFAULT)
+    ap.add_argument("--source", default="pred", choices=["pred", "gt_recon", "gt_emission"])
+    ap.add_argument("--out_root", required=True)
+    ap.add_argument("--shape_ids", nargs="*", default=None)
+    ap.add_argument("--cap_voxels", type=float, default=1.5)
+    args = ap.parse_args()
+
+    npzs = sorted(f for f in os.listdir(args.pred_voxels_dir) if f.endswith(".npz"))
+    shas = [os.path.splitext(f)[0] for f in npzs]
+    if args.shape_ids:
+        keep = set(args.shape_ids)
+        shas = [s for s in shas if s in keep]
+        npzs = [f"{s}.npz" for s in shas]
+
+    if args.metadata and os.path.exists(args.metadata):
+        meta_df = pd.read_parquet(args.metadata)
+    else:
+        out_meta = args.metadata or os.path.join(args.out_root, "metadata_slim.parquet")
+        meta_df = build_slim_metadata(args.src_parquet, shas, out_meta)
+        print(f"Built slim metadata for {len(meta_df)} shas -> {out_meta}")
+
+    misses = []
+    for f in npzs:
+        try:
+            m = bridge_one(os.path.join(args.pred_voxels_dir, f), args.source,
+                           meta_df, args.somage_root, args.out_root, args.cap_voxels)
+            misses.append(m)
+        except Exception as e:
+            print(f"  ERROR {f}: {e}")
+    if misses:
+        arr = np.array(misses)
+        print(f"Bridged {len(misses)} shapes -> {args.out_root}  "
+              f"miss-frac mean={arr.mean():.4f} max={arr.max():.4f}")
+
+
+if __name__ == "__main__":
+    main()
