@@ -17,7 +17,7 @@ if command -v sbatch >/dev/null 2>&1; then SUBMIT=(sbatch); else SUBMIT=(ssh fir
 #SBATCH -J ${NAME}
 #SBATCH --account=def-msavva_gpu
 #SBATCH --gres=gpu:h100_3g.40gb:1
-#SBATCH --time=4:00:00
+#SBATCH --time=${WALLTIME:-4:00:00}
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
