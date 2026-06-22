@@ -83,7 +83,6 @@ def bridge_one(npz_path, source, meta_df, somage_root, out_dir, cap_voxels=1.5):
     d = np.load(npz_path)
     coords = d["coords"]
     emission = np.asarray(d[source], dtype=np.float32)
-    emission = np.clip(emission, 0.0, 1.0)
     position_map, mask = load_somage_geom(sha, meta_df, somage_root)
     uv, miss = resample_to_uv(coords, emission, position_map, mask, cap_voxels=cap_voxels)
     shape_dir = os.path.join(out_dir, sha)
@@ -120,6 +119,11 @@ def main():
         out_meta = args.metadata or os.path.join(args.out_root, "metadata_slim.parquet")
         meta_df = build_slim_metadata(args.src_parquet, shas, out_meta)
         print(f"Built slim metadata for {len(meta_df)} shas -> {out_meta}")
+
+    missing = [s for s in shas if s not in meta_df.index]
+    if missing:
+        print(f"  WARNING: {len(missing)} of {len(shas)} shas not in metadata "
+              f"— they will error in bridge_one (e.g. {missing[0]})")
 
     misses = []
     for f in npzs:

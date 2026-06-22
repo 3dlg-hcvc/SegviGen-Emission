@@ -77,6 +77,24 @@ def test_load_somage_geom(tmp_path):
     assert np.allclose(pos[0, 0], centers_somage[0], atol=1e-3)
 
 
+def test_load_somage_geom_2d_occupancy(tmp_path):
+    centers_somage = np.array([[-0.5, 0.0, 0.25], [0.1, -0.2, 0.3]], dtype=np.float32)
+    ditem_dir = "000-000/" + "c" * 32
+    somage_dir = tmp_path / "somages" / ditem_dir
+    somage_dir.mkdir(parents=True)
+    # write a somage with 2D occupancy [H,W] (not [H,W,1])
+    pos01 = ((centers_somage + 1.0) / 2.0 * 65535).astype(np.uint16)
+    H = W = 2
+    position = np.zeros((H, W, 3), dtype=np.uint16); position[0, 0] = pos01[0]; position[0, 1] = pos01[1]
+    occupancy = np.zeros((H, W), dtype=bool); occupancy[0, 0] = True; occupancy[0, 1] = True
+    np.savez(str(somage_dir / "somage.npz"), position=position, occupancy=occupancy,
+             emission_color=np.zeros((H, W, 3), dtype=np.uint8))
+    meta = pd.DataFrame({"ditem_dir": [ditem_dir], "glb_1k_path": ["x.glb"]}, index=["c" * 32])
+    pos, mask = load_somage_geom("c" * 32, meta, str(tmp_path / "somages"))
+    assert mask.shape == (H, W) and mask.sum() == 2
+    assert np.allclose(pos[0, 0], centers_somage[0], atol=1e-3)
+
+
 def test_bridge_one_writes_aligned_png(tmp_path):
     coords = np.array([[10, 20, 30], [100, 100, 100]], dtype=np.int32)
     emission = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32)
