@@ -12,10 +12,15 @@ outputs/
 
 # Debug scratch
 data_toolkit/debug/
+debug_outputs/
 
 # Generated visualization artifacts (keep scripts, drop binaries/CSVs)
 vis/*.png
 vis/*.csv
+visualizations/
+log/
+emission_dit_*_pred.png
+emission_dit_*_test.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

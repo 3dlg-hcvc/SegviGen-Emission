@@ -95,7 +95,7 @@ def _build_vae_decoder_from_latent(vae_handle):
 
     The encoder is needed to prime the decoder's subdivision cache (the sparse
     spatial2channel/channel2spatial ops pair encode→decode state). Legacy:
-    see vis/legacy/vis_3d_emission_dit.py:191 (``z_enc = enc(x_gt)``).
+    see archive/vis/legacy/vis_3d_emission_dit.py:191 (``z_enc = enc(x_gt)``).
     """
     from trellis2.trainers.builders import build_models
     models = build_models(vae_handle.config["models"])
