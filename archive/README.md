@@ -22,7 +22,7 @@ and `vis/`.
 - Channel-hijack + two-stream VAE/DiT configs and fir scripts
 - CVAE *trainer* code (`trellis2/trainers/vae/emission_pbr_conditional.py`) — kept for reference; configs/scripts only moved
 - Blender 74k prep scripts (`script/star2/prep_74k_*`) — deferred until code-native latents replace them
-- Canonical checkpoints under `outputs/` (gitignored): see parent `CLEANUP_PLAN.md` Phase 4
+- Canonical checkpoints under `outputs/` (gitignored): see parent `AGENTS.md` (TRELLIS.2 baseline)
 
 ## Restoring
 
