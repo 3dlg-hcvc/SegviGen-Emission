@@ -129,6 +129,8 @@ Deployed at `/scratch/dya78/TRELLIS.2-lightning/` (`lightgen` branch), venv at `
 
 **PBR-VAE max batch size** (single H100 80GB, `EmissionPbrFinetuneTrainer`, fp16 + activation checkpointing): hard cap ≈ BS 88 on 1k data (BS 80 = 98% VRAM knife-edge; BS 96 OOMs). For 74k production (fatter voxel-count tail → +15–20% VRAM at the same BS), use **BS=48** (safe, ~76% on 1k) or BS=64 (aggressive — will occasionally OOM, needs `--requeue`). Always set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 
+**Vulcan deployment:** `script/vulcan/` holds 4 vulcan launch wrappers (same pattern as `script/fir/`).
+
 ## Data Paths
 
 - **Data root:** `data/lightgen_test/` — repo-relative path that works on every host. The 10-sample dataset (parquet, emission voxels, PBR voxels, latents, splits) lives here as real files. The `data/` directory is gitignored. To deploy on a new host, copy/rsync `data/lightgen_test/` along with the repo (e.g. `rsync -av data/ host:/path/to/repo/data/`).
@@ -167,15 +169,23 @@ No automated test framework. Ad-hoc test/diagnostic scripts live in `data_toolki
 python data_toolkit/test_emission_dit_10samples.py   # test DiT inference
 python data_toolkit/test_emission_vae_e2e.py         # test VAE encode/decode
 python data_toolkit/vis_emission_vae.py              # visualize VAE reconstructions
-python data_toolkit/vis_3d_emission_vae.py           # 3D interactive HTML visualization
+python vis/vis_3d_vae.py                             # 3D interactive HTML visualization
 ```
 
 ## Working conventions
 
 - **Visualizations: one HTML file with a sample dropdown**, not one file per sample. The pattern in `vis/vis_3d_*.py` (single HTML, embedded JSON, JS dropdown to switch samples) is the standard — don't emit N separate files.
-- **Label viz panels by what the method does, in plain terms**, not internal jargon. Mapping: channel-hijack / `emission_pbr_*` → **"Albedo → Emission"**; two-stream / `emission_vae_*` → **"Input/Output → Emission"**. Pass plain `--experiment "<plain name>=<path>"` labels (rendered as plain text).
+- **Label viz panels by what the method does, in plain terms**, not internal jargon. Mapping: channel-hijack / `emission_pbr_*` → **"albedo→emission"**; two-stream / `emission_vae_*` → **"pbr→emission"**. Pass plain `--experiment "<plain name>=<path>"` labels (rendered as plain text).
 - **Name shared-utility modules descriptively** (`vis_utils.py`), not with a leading underscore (`_vis_common.py`). Reserve `_`-prefixed names for truly single-caller private helpers.
 - **Before finetuning a pretrained model, verify the architecture config matches the checkpoint first** — extract the arch params from the pretrained ckpt JSON and copy them verbatim into the training config (don't guess `num_blocks` etc.), then do a short test-run before launching. Repeated PBR-VAE finetune failures traced back to config/weight mismatch.
+
+## Evaluation lives in the parent repo
+
+This submodule's DiT/VAE are evaluated from the parent lightgen repo via a voxel→UV bridge into
+`evaluation/evaluate_texge.py`. Toolchain + metric guide: parent
+[`docs/evaluation.md`](../docs/evaluation.md) (baseline stub:
+[`docs/baselines/trellis2.md`](../docs/baselines/trellis2.md)). When working inside this submodule
+only, those docs are the missing context.
 
 ## Architecture
 
