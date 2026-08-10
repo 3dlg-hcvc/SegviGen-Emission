@@ -221,6 +221,24 @@ Key trainer: `EmissionVaeTrainer` (`trellis2/trainers/vae/emission_vae.py`) — 
 
 Configs: `configs/scvae/emission_vae_*.yaml` (overfit / arch-variant configs — currently the `*_<N>sample_overfit.yaml`, `*_overfit.yaml`, `*_option*_overfit.yaml` family; new variants follow the same `emission_vae_<descriptor>.yaml` shape).
 
+#### Emission DiT conditioning (unified 2026-08-09)
+
+Three production DiT configs under `configs/gen/`, all finetuned from
+`slat_flow_imgshape2tex_dit_1_3B_512_bf16` with DINOv3 thumbnail cross-attention + CFG
+(`p_uncond: 0.1`). PBR/shape conditioning is per-token channel concat via `concat_cond`
+(order `[x_t | shape | pbr]`, built in `LightGenSLatEmissionLatent`):
+
+| config | in | concat_cond | role |
+|---|---|---|---|
+| `emission_dit_albedo2emission_pbrcond_74k_v2` | 96 | shape 32 + PBR 32 | albedo-slot latents WITH PBR cond — the 2026-08-09 conditioning-parity successor; input proj re-initialized (64→96 mismatch, warn-and-skip in `trainers/basic.py:_load_weights_for_model`) |
+| `emission_dit_albedo2emission_74k_v2` | 64 | shape 32 only (`skip_pbr_cond=true`) | the original no-PBR run — now the "without pbr condition" ablation; full weight reuse incl. input proj |
+| `emission_dit_pbr2emission_74k_v2` | 96 | shape 32 + PBR 32 | two-stream latents (its decoder REQUIRES `z_pbr`) |
+
+Since the unification, `skip_pbr_cond` no longer separates the two chains — the chain
+identity is the emission-latent representation (albedo-slot vs two-stream VAE); display
+names live in the parent `AGENTS.md`. The SegviGen-emissive baseline received the matching
+channel-concat mode in the same change (`--pbr_cond channel`, PR QhelDIV/SegviGen-emissive#1).
+
 ### Tiny-dataset overfit setup (10 samples + 4 GPUs)
 
 All trainers use `drop_last=True` on the train DataLoader. With `len(dataset) = 10` and any `num_gpus * batch_size_per_gpu > 10`, every rank gets ≤ batch_size samples and produces zero training batches — Lightning prints `Total length of DataLoader across ranks is zero` and `Trainer.fit stopped: No training batches.`
