@@ -22,6 +22,9 @@ OUTPUT_DIR="/scratch/dya78/TRELLIS.2-lightning/outputs/${NAME}"
 BRANCH="lightgen"
 MAX_STEPS="${MAX_STEPS:-}"
 WALLTIME="${WALLTIME:-24:00:00}"
+# Site-suffixed wandb name: the venus-05 twin of this run may train in
+# parallel; distinct names keep the two curves apart in the LightGen project.
+WANDB_NAME="${WANDB_NAME:-dit_albedo->emission_pbrcond_74k_v2_fir}"
 
 echo "Submitting job: ${NAME}"
 echo "Config: ${CONFIG}"
@@ -92,6 +95,7 @@ srun python -u train.py \
     --output_dir ${OUTPUT_DIR} \
     --ckpt last \
     --num_gpus 4 \
+    --override "trainer.args.wandb_name=${WANDB_NAME}" \
     ${MAX_STEPS:+--override trainer.args.max_steps=${MAX_STEPS}} \
     > >(tee "\${LOG}") 2>&1 &
 TRAIN_PID=\$!
