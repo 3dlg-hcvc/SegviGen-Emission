@@ -87,6 +87,9 @@ echo "repo at: \$(git log --oneline -1)"
 export TMPDIR=/localscratch/dya78/tmp
 export WANDB_MODE=offline
 export HF_HUB_OFFLINE=1
+# venus-19 root FS was 100% full -> HF cache relocated to /localscratch
+# (~/.cache/huggingface is now a symlink there)
+export HF_HOME=/localscratch/dya78/hf_home
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export ATTN_BACKEND=sdpa
 export SPARSE_ATTN_BACKEND=xformers
@@ -107,6 +110,7 @@ python -u train.py \
     --ckpt last \
     --num_gpus 4 \
     --override "trainer.args.wandb_name=${WANDB_NAME}" \
+    --override trainer.args.image_cond_model.args.model_name=/localscratch/dya78/hf_home/hub/models--facebook--dinov3-vitl16-pretrain-lvd1689m/snapshots/ea8dc2863c51be0a264bab82070e3e8836b02d51 \
     ${MAX_STEPS:+--override trainer.args.max_steps=${MAX_STEPS}} \
     > >(tee "\${LOG}") 2>&1 &
 TRAIN_PID=\$!
