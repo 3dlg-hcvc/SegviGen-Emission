@@ -84,6 +84,9 @@ export SPARSE_ATTN_BACKEND=xformers
 # flex_gemm autotune-cache races across ranks -> in-memory autotune only
 export FLEX_GEMM_USE_AUTOTUNE_CACHE=0
 export FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
+# Lightning: disable the SLURM-coordinated launcher (ntasks=1 vs devices=4
+# ValueError) so --num_gpus 4 native-spawns — star2 single-task convention.
+export SLURM_JOB_NAME=bash
 
 mkdir -p log
 TS=\$(date +%Y%m%d-%H%M%S)
@@ -105,9 +108,15 @@ wait \$TRAIN_PID
 TRAIN_EXIT=\$?
 
 if [ \$TRAIN_EXIT -ne 0 ]; then
-    echo "Training crashed (exit code \$TRAIN_EXIT) at \$(date). Requeueing job..."
-    scontrol requeue \${SLURM_JOB_ID}
-    exit 0
+    # Cap requeues: transient faults deserve a retry, deterministic errors must
+    # not crash-loop.
+    if [ \${SLURM_RESTART_COUNT:-0} -lt 3 ]; then
+        echo "Training crashed (exit code \$TRAIN_EXIT) at \$(date). Requeueing job..."
+        scontrol requeue \${SLURM_JOB_ID}
+        exit 0
+    fi
+    echo "Training crashed (exit code \$TRAIN_EXIT) at \$(date); restart cap reached (\${SLURM_RESTART_COUNT}). NOT requeueing."
+    exit \$TRAIN_EXIT
 fi
 echo "Training completed at \$(date)."
 exit \$TRAIN_EXIT
