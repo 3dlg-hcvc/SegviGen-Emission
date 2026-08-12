@@ -57,6 +57,7 @@ def main():
     ap.add_argument("--data_root", default="/scratch/dya78/lightgen/lightgen_74k")
     ap.add_argument("--emission_latent_name", default="emission_pbr_vae_ft_74k")
     ap.add_argument("--shape_latent_name", default="shape_enc_next_dc_f16c32_fp16_256")
+    ap.add_argument("--pbr_latent_name", default="tex_enc_next_dc_f16c32_fp16_256")
     ap.add_argument("--split_json", default=None)
     ap.add_argument("--parquet", default=None)
     ap.add_argument("--thumbnail_dir", default=None)
@@ -100,6 +101,21 @@ def main():
         ds = dit_cfg["dataset"]["args"]
         emit_mean = torch.tensor(ds["emission_normalization"]["mean"]); emit_std = torch.tensor(ds["emission_normalization"]["std"])
         shape_mean = torch.tensor(ds["shape_normalization"]["mean"]);   shape_std = torch.tensor(ds["shape_normalization"]["std"])
+        # pbrcond variant (2026-08-09 conditioning parity): albedo-slot latents
+        # WITH the PBR latent channel-concatenated per token, exactly like the
+        # twostream predictor's cond assembly. Config-driven; the missing-key
+        # default mirrors LightGenSLatEmissionLatent (skip_pbr_cond=False), and
+        # the in_channels cross-check refuses to guess for any legacy layout
+        # (e.g. the archived in=64 pbr-only-cond overfit config) instead of
+        # silently assembling the wrong conditioning.
+        use_pbr_cond = not ds.get("skip_pbr_cond", False)
+        in_ch = dit_cfg["models"]["denoiser"]["args"]["in_channels"]
+        expected_in = 96 if use_pbr_cond else 64
+        assert in_ch == expected_in, (
+            f"in_channels={in_ch} inconsistent with skip_pbr_cond={ds.get('skip_pbr_cond')} "
+            f"(expected {expected_in}); unsupported/legacy cond layout — refusing to guess")
+        if use_pbr_cond:
+            pbr_mean = torch.tensor(ds["pbr_normalization"]["mean"]); pbr_std = torch.tensor(ds["pbr_normalization"]["std"])
 
         # ---- DINOv3 ----
         p("Loading DINOv3...")
@@ -156,7 +172,19 @@ def main():
         z_shape = load_latent(os.path.join(args.data_root, "shape_latents", args.shape_latent_name, f"{sha}.npz"))
         z_emit_n = z_enc.replace(normalize(z_enc.feats, emit_mean, emit_std))
         z_shape_n = z_enc.replace(normalize(z_shape.feats.to(DEVICE), shape_mean, shape_std))
-        concat_cond = z_emit_n.replace(z_shape_n.feats)
+        if use_pbr_cond:
+            # cond order [shape | pbr] -> DiT input [x_t | shape | pbr] = 96ch,
+            # mirroring predict_emission_voxels_twostream.py and the training
+            # dataset's concat_cond construction (incl. its coord-equality
+            # assert — equal row counts with a different token order would
+            # silently pair PBR features with the wrong tokens).
+            z_pbr = load_latent(os.path.join(args.data_root, "pbr_latents", args.pbr_latent_name, f"{sha}.npz")).to(DEVICE)
+            assert torch.equal(z_enc.coords, z_pbr.coords) and torch.equal(z_enc.coords, z_shape.coords.to(DEVICE)), \
+                f"latent coord mismatch {sha}: enc={tuple(z_enc.coords.shape)} pbr={tuple(z_pbr.coords.shape)} shape={tuple(z_shape.coords.shape)}"
+            z_pbr_n = z_enc.replace(normalize(z_pbr.feats, pbr_mean, pbr_std))
+            concat_cond = z_emit_n.replace(torch.cat([z_shape_n.feats, z_pbr_n.feats], dim=-1))
+        else:
+            concat_cond = z_emit_n.replace(z_shape_n.feats)
         _, img_feat = encode_image(sha); neg = torch.zeros_like(img_feat)
         noise = z_emit_n.replace(torch.randn_like(z_emit_n.feats))
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
