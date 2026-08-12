@@ -133,7 +133,10 @@ def main():
         # ---- DiT ----
         p(f"Loading DiT: {args.dit_ckpt}")
         dit = build_models(dit_cfg["models"])["denoiser"]
-        ck = torch.load(args.dit_ckpt, map_location="cpu", weights_only=False)["state_dict"]
+        # mmap: the ~20 GB Lightning ckpt (model+optimizer) would otherwise be
+        # materialized in RAM and OOM-kill the process on a busy workstation;
+        # lazy-mapping means only the tensors load_state_dict copies get read.
+        ck = torch.load(args.dit_ckpt, map_location="cpu", weights_only=False, mmap=True)["state_dict"]
         dit.load_state_dict({k.removeprefix("models.denoiser."): v for k, v in ck.items() if k.startswith("models.denoiser.")})
         dit.to(DEVICE).eval()
         sampler = FlowEulerCfgSampler(sigma_min=dit_cfg["trainer"]["args"]["sigma_min"])
@@ -142,7 +145,7 @@ def main():
         p(f"Loading VAE: {args.vae_ckpt}")
         vae = build_models(yaml.safe_load(open(vae_cfg_path))["models"])
         enc, dec = vae["encoder"], vae["decoder"]
-        vck = torch.load(args.vae_ckpt, map_location="cpu", weights_only=False)["state_dict"]
+        vck = torch.load(args.vae_ckpt, map_location="cpu", weights_only=False, mmap=True)["state_dict"]
         enc.load_state_dict({k.removeprefix("models.encoder."): v for k, v in vck.items() if k.startswith("models.encoder.")})
         dec.load_state_dict({k.removeprefix("models.decoder."): v for k, v in vck.items() if k.startswith("models.decoder.")})
         enc.to(DEVICE).eval(); dec.to(DEVICE).eval()
