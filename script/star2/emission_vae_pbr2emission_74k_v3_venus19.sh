@@ -10,11 +10,18 @@
 # decoder from random init at half width and half depth (128.63 M vs 828.60 M).
 # See the header of configs/scvae/emission_vae_pbr2emission_74k_v3.yaml.
 #
-# GLOBAL BATCH 64 = 2 GPUs x batch_size_per_gpu 32, matching the albedo->emission
-# VAE run exactly. NUM_GPUS/BATCH_SIZE are overridable so the probe can trade
-# micro-batch against GPU count while holding the global batch at 64:
-#   2 x 32  (default, matches albedo->emission)
-#   4 x 16  (fallback if 32/GPU does not fit — same global batch)
+# GLOBAL BATCH 64 — the albedo->emission VAE's global batch, and the number that
+# has to hold for the two chains to stay comparable. NUM_GPUS x BATCH_SIZE must
+# always multiply to 64:
+#   4 x 16  (default — all of venus-19, ~2x the throughput of the 2-GPU split)
+#   2 x 32  (what albedo->emission itself ran; use when sharing the node)
+# DDP makes these mathematically identical: both average gradients over the same
+# 64 samples, and there is no BatchNorm anywhere in the model. Raising BATCH_SIZE
+# to 32 on 4 GPUs would silently double the global batch to 128 and break the
+# comparison this run exists to make.
+#
+# VRAM is not the constraint: measured 19.4 GB / 15.9 GB of 96 GB per card at
+# BS 32 (probe job 244547), so BS 16 has ample headroom.
 #
 # --ckpt last is SAFE here and required for requeue: resolve_ckpt_path returns
 # None on an empty output dir, so resume_mode stays None and on_fit_start still
@@ -35,15 +42,29 @@ OUT_SUFFIX="${OUT_SUFFIX:-}"
 OUTPUT_DIR="${REPO}/outputs/${NAME}${OUT_SUFFIX}"
 BRANCH="lightgen"
 MAX_STEPS="${MAX_STEPS:-}"
-NUM_GPUS="${NUM_GPUS:-2}"
-BATCH_SIZE="${BATCH_SIZE:-32}"
+NUM_GPUS="${NUM_GPUS:-4}"
+BATCH_SIZE="${BATCH_SIZE:-16}"
 WALLTIME="${WALLTIME:-4-00:00:00}"
 WANDB_NAME="${WANDB_NAME:-vae_pbr->emission_74k_v3_venus19}"
+
+# The albedo->emission VAE's global batch. Comparing the two chains requires this
+# to hold, and it is the easiest thing to break silently by changing GPU count
+# without changing the micro-batch. Refuse to submit rather than train 3 days at
+# the wrong effective batch size. GLOBAL_BATCH=<n> to deliberately run something
+# else.
+GLOBAL_BATCH="${GLOBAL_BATCH:-64}"
+ACTUAL=$((NUM_GPUS * BATCH_SIZE))
+if [ "${ACTUAL}" -ne "${GLOBAL_BATCH}" ]; then
+    echo "REFUSING TO SUBMIT: NUM_GPUS(${NUM_GPUS}) x BATCH_SIZE(${BATCH_SIZE}) = ${ACTUAL}," >&2
+    echo "  but the albedo->emission baseline's global batch is ${GLOBAL_BATCH}." >&2
+    echo "  Fix the micro-batch, or set GLOBAL_BATCH=${ACTUAL} if you mean it." >&2
+    exit 1
+fi
 
 echo "Submitting job: ${NAME}_${TAG}"
 echo "Config: ${CONFIG}"
 echo "Output: ${OUTPUT_DIR}"
-echo "GPUs: ${NUM_GPUS} x batch ${BATCH_SIZE} = global $((NUM_GPUS * BATCH_SIZE))"
+echo "GPUs: ${NUM_GPUS} x batch ${BATCH_SIZE} = global ${ACTUAL}"
 echo "Max steps: ${MAX_STEPS:-<config default 35800>}"
 
 ssh star2 sbatch << EOF
