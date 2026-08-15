@@ -215,11 +215,32 @@ Configs: `configs/scvae/emission_pbr_*.yaml`. Sub-patterns:
 
 Two encoders: a trainable emission encoder (3→32-ch latent) plus a frozen pretrained PBR encoder (PBR→32-ch latent). The decoder receives `concat(z_emission, z_pbr)` = 64 channels along the feature axis, so its input projection is **reinitialized** (cannot reuse the PBR decoder's input weights). Output is 3-channel emission.
 
-The emission DiT (downstream stage) similarly takes 96-channel input (32 emission + 32 PBR + 32 shape) and predicts 32-channel emission noise.
+> ⚠️ **The shipped `_v2` run was NOT a finetune, and this section used to read as if it were**
+> (audit 2026-08-14). Only `pretrained_pbr_encoder` — the *frozen conditioning* encoder, which
+> sits off the emission path — was ever pretrained. Its config carried no `finetune_ckpt`, and a
+> missing key is a **silent no-op** (`trainers/basic.py:403-409`), so the trainable emission
+> encoder **and the whole decoder** trained from random init. Its width and depth were also each
+> halved versus the albedo→emission VAE: **128.63 M trainable params vs 828.60 M (6.44×)**.
+> Measured signature: first logged `train/l1` 0.2957 at step 9, where an albedo→emission
+> finetune logs 0.00329 at step 0.
+>
+> Adding `finetune_ckpt` to that architecture would have been a measured no-op — only 1 of 284
+> encoder tensors and 0 of 284 decoder tensors were shape-compatible. The fix therefore required
+> an architecture change: `configs/scvae/emission_vae_pbr2emission_74k_v3.yaml`, which matches
+> the albedo→emission VAE apart from I/O channels (564 of 568 tensors identical in shape) and
+> finetunes from the same pretrained PBR VAE.
+>
+> **Never resume a first launch.** `on_fit_start` returns before `_apply_finetune_checkpoint`
+> when `resume_mode` is `legacy`/`lightning` (`basic.py:104-106`), so starting into a non-empty
+> output dir silently skips the pretrained init — the same defect, by a second route. `--ckpt
+> last` is safe only because `resolve_ckpt_path` returns `None` on an empty dir
+> (`train.py:640-655`).
+
+The emission DiT (downstream stage) similarly takes 96-channel input (32 emission + 32 PBR + 32 shape) and predicts 32-channel emission noise. Both DiTs **are** genuine finetunes of the same pretrained denoiser, with identical architecture args and step budgets — the asymmetry above is confined to the VAE stage.
 
 Key trainer: `EmissionVaeTrainer` (`trellis2/trainers/vae/emission_vae.py`) — splits input into emission/PBR, encodes emission, freezes PBR encoder via `pretrained_pbr_encoder: ...`, concatenates latents for decoder.
 
-Configs: `configs/scvae/emission_vae_*.yaml` (overfit / arch-variant configs — currently the `*_<N>sample_overfit.yaml`, `*_overfit.yaml`, `*_option*_overfit.yaml` family; new variants follow the same `emission_vae_<descriptor>.yaml` shape).
+Configs: `configs/scvae/emission_vae_*.yaml` (overfit / arch-variant configs — currently the `*_<N>sample_overfit.yaml`, `*_overfit.yaml`, `*_option*_overfit.yaml` family; new variants follow the same `emission_vae_<descriptor>.yaml` shape). Production: `emission_vae_pbr2emission_74k_v3.yaml`.
 
 #### Emission DiT conditioning (unified 2026-08-09)
 
