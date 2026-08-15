@@ -28,8 +28,17 @@
 #   decoder.from_latent.weight    (1024,32) -> (1024,64)  cat(z_emission, z_pbr)
 #   decoder.output_layer.weight   (6,64)    -> (3,64)     emission RGB out
 #   decoder.output_layer.bias     (6,)      -> (3,)       emission RGB out
-# Those 4 reinitialize (65,923 params = 0.008% of the model); the other 564
-# tensors transfer verbatim from the pretrained files.
+#
+# None of the four is left random: all are resolved offline by
+# data_toolkit/bake_pbr2emission_v3_init.py (see finetune_ckpt below), which
+# takes the pretrained base_color slice for the three I/O tensors and puts the
+# pretrained latent projection in from_latent's emission half, zeroing only the
+# genuinely new z_pbr half. A FIFTH tensor is also rewritten —
+# encoder.input_layer.bias, which is (64,) on both sides and so loads cleanly
+# today: the dropped input columns 3:6 saw the albedo chain's constant pad
+# (-1,+1,+1), a fixed offset worth 1.77x the entire bias, and it is folded in.
+# So 563 tensors transfer verbatim and 5 are derived from pretrained weights;
+# nothing is xavier-random.
 #
 # `decoder.latent_channels` 64 is the one difference that is not merely a
 # channel count in spirit: this decoder consumes cat([z_emission 32, z_pbr 32])
@@ -39,7 +48,9 @@
 # BUDGET IS ALSO EQUALIZED. The shipped run took 154,600 steps at constant LR
 # while albedo took 34,800 with a cosine tail. Fixing capacity while leaving
 # that gap would just trade a capacity confound for a budget one, so max_steps
-# and lr_scheduler below are copied from the albedo chain.
+# matches the albedo chain. The LR schedule is aligned in intent but NOT copied
+# verbatim — see the lr_scheduler comment below for why copying its T_max would
+# have produced a schedule that never anneals.
 models:
   encoder:
     name: SparseUnetVaeEncoder
@@ -130,17 +141,34 @@ trainer:
   args:
     # Budget copied from the albedo chain (was 160000 with no scheduler).
     max_steps: 35800
-    batch_size_per_gpu: 32    # global 64 on 2 GPUs — matches albedo. PROBE FIRST.
+    # The launcher overrides this to hold GLOBAL batch 64 — the albedo chain's —
+    # across whatever GPU count it uses (default 4 x 16), and refuses to submit
+    # if the product is not 64. This value applies only if train.py is invoked
+    # directly on 2 GPUs.
+    batch_size_per_gpu: 32
     batch_split: 1
     optimizer:
       name: AdamW
       args:
         lr: 0.0001
         weight_decay: 0.0
+    # T_max MUST equal max_steps. CosineAnnealingLR is periodic with period
+    # 2*T_max, so T_max 10000 over a 35,800-step run does not anneal — lr returns
+    # to the full 1e-4 at step 20,000 and the run would END at 6.28e-5 on a
+    # RISING limb. (T_max 10000 is what the albedo->emission chain used, but that
+    # was a ~9k-step RESUMED tail leg after a constant-LR plateau, so its cosine
+    # stayed inside the first descending half-period. Copying the number without
+    # the context inverts its meaning.)
+    #
+    # Residual difference from albedo->emission, stated rather than hidden: that
+    # chain's realized schedule was constant-LR to plateau then a short cosine
+    # tail; this is one smooth cosine over the whole run. Reproducing its two-leg
+    # trajectory exactly would need two jobs; a single full-length anneal is the
+    # standard alternative and strictly better than a schedule that never anneals.
     lr_scheduler:
       name: CosineAnnealingLR
       args:
-        T_max: 10000
+        T_max: 35800
         eta_min: 1.0e-06
     ema_rate:
     - 0.9999
@@ -154,12 +182,33 @@ trainer:
     loss_type: l1
     lambda_kl: 1.0e-07
     emission_channels: 3
-    # THE FIX. Absent in the _v2 config, which is why its encoder+decoder were
-    # random-init. Hub short-ids (not the resolved absolute paths the shipped
-    # runtime dump carried) so the config stays portable across sites.
+    # THE FIX, part 2 — PRE-BAKED initial weights, not the raw hub files.
+    #
+    # Pointing this at the raw pretrained pair loads 564 of 568 tensors and drops
+    # the 4 shape-mismatched ones (basic.py:385-394 skips, it does not adapt), so
+    # `encoder.input_layer` and `decoder.from_latent` — both ON the information
+    # path — stay at xavier init and the pretrained interior is fed a
+    # distribution it never saw. Measured step-0 train/l1 on real voxels:
+    #   albedo->emission reference   0.00488
+    #   raw hub files (skip)         1.77424   <- worse than predicting a constant (0.94108)
+    #   these baked files            0.00488   <- identical to the reference, to 5e-8
+    # (data_toolkit/verify_pbr2emission_v3/results.json)
+    #
+    # bake_pbr2emission_v3_init.py resolves all four offline, so the trainer does
+    # a clean 284/284 load through UNMODIFIED code. That is why this is a baked
+    # file and not a trainer flag: the five DiT configs deliberately reinitialize
+    # a mismatched 64->96 input projection, and a generic "adapt mismatched
+    # shapes" option would silently change the init behind the shipped
+    # 0.3326 / 0.3224 numbers. Here there is no flag to set wrong.
+    #
+    # Regenerate (gitignored, ~1.6 GB, deterministic — the launcher does this in
+    # the job body so cluster nodes need no rsync):
+    #   python data_toolkit/bake_pbr2emission_v3_init.py \
+    #       --out data/ckpt_init/pbr2emission_v3 \
+    #       --verify-config configs/scvae/emission_vae_pbr2emission_74k_v3.yaml
     finetune_ckpt:
-      encoder: microsoft/TRELLIS.2-4B/ckpts/tex_enc_next_dc_f16c32_fp16
-      decoder: microsoft/TRELLIS.2-4B/ckpts/tex_dec_next_dc_f16c32_fp16
+      encoder: data/ckpt_init/pbr2emission_v3/encoder.safetensors
+      decoder: data/ckpt_init/pbr2emission_v3/decoder.safetensors
     # Unchanged: the frozen conditioning path, off the emission path.
     pretrained_pbr_encoder: microsoft/TRELLIS.2-4B/ckpts/tex_enc_next_dc_f16c32_fp16
     i_log: 10

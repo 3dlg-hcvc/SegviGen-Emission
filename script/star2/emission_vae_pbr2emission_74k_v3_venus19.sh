@@ -124,6 +124,22 @@ mkdir -p log
 TS=\$(date +%Y%m%d-%H%M%S)
 LOG="log/\${TS}-${NAME}${OUT_SUFFIX}_${TAG}.log"
 
+# Bake the initial weights here rather than shipping them: data/ is gitignored,
+# so a cluster clone cannot receive them via git pull, and the bake is
+# deterministic and takes seconds. It reads the pretrained pair out of this
+# node's HF cache (HF_HOME above), resolves the 4 shape-mismatched tensors plus
+# the input_layer.bias fold, and asserts an exact 284/284 match against the
+# config. Without this the trainer would silently skip those tensors and
+# cold-start — the defect v3 exists to fix.
+python -u data_toolkit/bake_pbr2emission_v3_init.py \
+    --out data/ckpt_init/pbr2emission_v3 \
+    --verify-config ${CONFIG} 2>&1 | tee -a "\${LOG}"
+BAKE_EXIT=\${pipestatus[1]}
+if [ \$BAKE_EXIT -ne 0 ]; then
+    echo "Init bake failed (exit \$BAKE_EXIT) — refusing to train from an unverified init."
+    exit \$BAKE_EXIT
+fi
+
 python -u train.py \
     --config ${CONFIG} \
     --output_dir ${OUTPUT_DIR} \
