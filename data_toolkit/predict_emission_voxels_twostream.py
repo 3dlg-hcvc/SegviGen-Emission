@@ -19,7 +19,7 @@ Recipe verified against trellis2/trainers/vae/emission_vae.py and
 trellis2/datasets/lightgen_slat.py.
 """
 from __future__ import annotations
-import argparse, json, os, sys, types
+import argparse, hashlib, json, os, sys, types
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import numpy as np
@@ -54,6 +54,17 @@ def load_latent(path):
     return sp.SparseTensor(feats, torch.cat([bc, coords], dim=-1))
 
 
+def sample_seed(sha: str, seed: int) -> int:
+    """Per-shape RNG seed for `(sha, seed)`. Order-, batch- and skip-independent.
+
+    VERBATIM COPY of evaluation/newdata_eval/seedutil.py in the parent lightgen repo. Duplicated
+    because this submodule runs on cluster nodes where the parent is not checked out. Keep the
+    copies byte-identical. The value is the FULL unsigned 64-bit prefix, unmasked -- masking to
+    int63 gives a different RNG stream for the same nominal seed.
+    """
+    return int.from_bytes(hashlib.sha256(f"{sha}:{seed}".encode()).digest()[:8], "big")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dit_ckpt", required=True)
@@ -73,6 +84,15 @@ def main():
     ap.add_argument("--guidance", type=float, default=3.0)
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--out_dir", default="outputs/emission_dit_twostream_74k/eval")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="sampling seed. Per-shape noise is derived from sha256(sha:seed), so "
+                         "it is independent of --shas order, batching and skipped shapes.")
+    ap.add_argument("--pred_only", action="store_true",
+                    help="write only coords+pred, skipping the gt_recon decode. Use for seeds "
+                         "01..04: gt_recon/gt_emission are noise-independent, so seed00's copy "
+                         "is the one the ceiling rows are scored from. Do NOT use for seed00 -- "
+                         "build_model_gallery.py and the UV viz/bridge tools index those keys "
+                         "with no guard and raise KeyError.")
     args = ap.parse_args()
 
     dit_cfg_path = args.dit_cfg or os.path.join(os.path.dirname(args.dit_ckpt), "..", "config.yaml")
@@ -123,7 +143,10 @@ def main():
     # ---- DiT (in=96) ----
     p(f"Loading DiT: {args.dit_ckpt}")
     dit = build_models(dit_cfg["models"])["denoiser"]
-    ck = torch.load(args.dit_ckpt, map_location="cpu", weights_only=False)["state_dict"]
+    # mmap=True: these checkpoints are ~20.7 GB and a plain load was OOM-killed on a busy
+    # workstation. Commit 7f498af added this to predict_emission_voxels.py:159 only; the
+    # twostream lane was missed, and the multi-seed round runs it five times.
+    ck = torch.load(args.dit_ckpt, map_location="cpu", weights_only=False, mmap=True)["state_dict"]
     dit.load_state_dict({k.removeprefix("models.denoiser."): v for k, v in ck.items() if k.startswith("models.denoiser.")})
     dit.to(DEVICE).eval()
     sampler = FlowEulerCfgSampler(sigma_min=dit_cfg["trainer"]["args"]["sigma_min"])
@@ -132,7 +155,7 @@ def main():
     p(f"Loading VAE: {args.vae_ckpt}")
     vae = build_models(yaml.safe_load(open(vae_cfg_path))["models"])
     enc, dec = vae["encoder"], vae["decoder"]
-    vck = torch.load(args.vae_ckpt, map_location="cpu", weights_only=False)["state_dict"]
+    vck = torch.load(args.vae_ckpt, map_location="cpu", weights_only=False, mmap=True)["state_dict"]
     enc.load_state_dict({k.removeprefix("models.encoder."): v for k, v in vck.items() if k.startswith("models.encoder.")})
     dec.load_state_dict({k.removeprefix("models.decoder."): v for k, v in vck.items() if k.startswith("models.decoder.")})
     enc.to(DEVICE).eval(); dec.to(DEVICE).eval()
@@ -176,6 +199,9 @@ def main():
 
         # (D) sample DiT: noise(32) + concat_cond(64) -> [emission_noise, shape, pbr]=96
         _, img_feat = encode_image(sha); neg = torch.zeros_like(img_feat)
+        # GLOBAL seed, not a torch.Generator -- see the sibling predictor and
+        # docs/superpowers/specs/2026-08-15-multi-seed-evaluation-design.md §2.2.
+        torch.manual_seed(sample_seed(sha, args.seed))
         noise = z_emit_n.replace(torch.randn_like(z_emit_n.feats))
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             res = sampler.sample(dit, noise, cond=img_feat, neg_cond=neg, concat_cond=concat_cond,
@@ -185,17 +211,26 @@ def main():
         z_dit = z_emit.replace(denormalize(res.samples.feats, emit_mean.to(DEVICE), emit_std.to(DEVICE)))
 
         # (F) decode: cat([emission, pbr]) = 64ch -> 3ch, using RAW latents
-        gt_dec = dec(z_emit.replace(torch.cat([z_emit.feats, z_pbr.feats], dim=-1)))
         dit_dec = dec(z_emit.replace(torch.cat([z_dit.feats, z_pbr.feats], dim=-1)))
-        assert torch.equal(gt_dec.coords, dit_dec.coords) and \
-               torch.equal(gt_dec.coords[:, 1:], coords.to(gt_dec.coords.device)), \
-            f"decode coord order mismatch {sha}: gt={tuple(gt_dec.coords.shape)} dit={tuple(dit_dec.coords.shape)} raw={tuple(coords.shape)}"
+        if args.pred_only:
+            # Keep the coord assert: it is the ONLY gate that the decoder output aligns
+            # element-wise with coords_np.
+            assert torch.equal(dit_dec.coords[:, 1:], coords.to(dit_dec.coords.device)), \
+                f"decode coord order mismatch {sha}: dit={tuple(dit_dec.coords.shape)} raw={tuple(coords.shape)}"
+            np.savez(os.path.join(out_vox_dir, f"{sha}.npz"),
+                     coords=coords_np,
+                     pred=to01(dit_dec.feats))
+        else:
+            gt_dec = dec(z_emit.replace(torch.cat([z_emit.feats, z_pbr.feats], dim=-1)))
+            assert torch.equal(gt_dec.coords, dit_dec.coords) and \
+                   torch.equal(gt_dec.coords[:, 1:], coords.to(gt_dec.coords.device)), \
+                f"decode coord order mismatch {sha}: gt={tuple(gt_dec.coords.shape)} dit={tuple(dit_dec.coords.shape)} raw={tuple(coords.shape)}"
 
-        np.savez(os.path.join(out_vox_dir, f"{sha}.npz"),
-                 coords=coords_np,
-                 pred=to01(dit_dec.feats),
-                 gt_recon=to01(gt_dec.feats),
-                 gt_emission=gt_emission01)
+            np.savez(os.path.join(out_vox_dir, f"{sha}.npz"),
+                     coords=coords_np,
+                     pred=to01(dit_dec.feats),
+                     gt_recon=to01(gt_dec.feats),
+                     gt_emission=gt_emission01)
         n_done += 1
         torch.cuda.empty_cache()
 
