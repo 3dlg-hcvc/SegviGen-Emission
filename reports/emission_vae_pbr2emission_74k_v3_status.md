@@ -6,6 +6,84 @@ input/output channels, and is actually finetuned from the pretrained PBR VAE.
 Config: `configs/scvae/emission_vae_pbr2emission_74k_v3.yaml`
 Launcher: `script/star2/emission_vae_pbr2emission_74k_v3_venus19.sh`
 
+## RESULT — complete 2026-08-16
+
+Job 244567, cs-venus-19, 4 × RTX Pro 6000 SE, `COMPLETED`, 26 h 15 m, full 35,800 steps,
+no crash and no requeue (`restart_count=0`).
+
+| model | steps | val/loss |
+|---|---|---|
+| `pbr→emission` `_v2` — what this replaces | 154,600 | 0.0088 |
+| **`pbr→emission` `_v3`** | **34,800** | **0.0055** |
+| `albedo→emission` `_v2` | 34,800 | 0.0056 |
+
+**At identical step budget the two chains are indistinguishable** (0.0055 vs 0.0056), and v3
+beats the model it replaces by 37.5% using 4.4× fewer steps.
+
+**The headline finding: the 57% gap between the chains was never about the representation.**
+It was entirely capacity and initialization — `pbr→emission` had been running as a 6.44×
+smaller model trained from random init. Equalize those and the gap closes to 1.8%, in v3's
+favour. Any claim that the albedo-slot representation beats the two-stream one rests on the
+old comparison and does not survive this.
+
+Best checkpoint: `outputs/emission_vae_pbr2emission_74k_v3/ckpts/step0034800-0.0055.ckpt`
+(node-local on cs-venus-19). wandb: offline run
+`outputs/emission_vae_pbr2emission_74k_v3/wandb/offline-run-20260815_010033-0fpo8h51`,
+**not yet synced**.
+
+Health: val flat at 0.0055 over the final six epochs; cosine completed to `eta_min`
+(final lr 1.190e-6); KL stable 14.9–17.7. One isolated NaN at step 2,520 (KL spiked to 91,638),
+fully recovered by step 2,530 and never recurring in the remaining 33,000 steps — the fp16 loss
+scaler skipped that step's update, so no weights were corrupted. Throughput 3.0 s/step at
+4 × batch 16, versus 12.74 s/step at 2 × batch 32.
+
+### The z_pbr stream saturated at 2%
+
+‖`from_latent.weight[:, 32:]`‖ relative to ‖`[:, :32]`‖, which starts at exactly 0 by
+construction:
+
+| step | ratio |
+|---|---|
+| 1,200 | 1.04% |
+| 4,600 | 1.79% |
+| 20,200 | 2.20% |
+| **34,800 (final)** | **2.11%** |
+
+It grows, then saturates and slightly contracts. Together with the val result — the chain that
+can see PBR ties the chain that cannot — this points at PBR conditioning contributing very
+little to emission reconstruction. **Norm is not contribution**, so the ablation below settles it.
+
+## ABLATION — the PBR condition carries no usable information
+
+`data_toolkit/ablate_zpbr_v3.py`, val split, n=387, deterministic (`sample_posterior=False`),
+three arms identical apart from `z_pbr`. Run on **both** VAEs, because v3's `z_pbr` half starts
+at exactly zero and a result from v3 alone could not be separated from that choice.
+
+| | normal | zeroed | shuffled |
+|---|---|---|---|
+| **v3** (zero-init, 34,800 steps) | 0.006395 | 0.006398 (**+0.04%**) | 0.006396 (**+0.01%**) |
+| **v2** (random-init, 154,600 steps) | 0.009988 | 0.066688 (**+567.68%**) | 0.010231 (**+2.43%**) |
+
+**Conclusion: the PBR condition's information content contributes nothing to emission
+reconstruction.** v3 does not use the stream at all. v2 depends on `z_pbr` being *present* —
+zeroing it costs 568% — but not on *what it contains*: feeding each token another token's PBR
+costs 2.43%. v2 co-adapted to the stream's statistics (scale/offset) rather than reading PBR
+semantics from it.
+
+That is also why v3 ties `albedo→emission` (0.0055 vs 0.0056). The one capability separating
+the two chains was never doing anything, so removing it costs nothing.
+
+> **Methodological note — the `shuffled` arm is what makes this readable.** With only the
+> `zeroed` arm the evidence reads exactly backwards: v2 collapses 568% while v3 is unmoved,
+> which looks like proof that zero-initializing `z_pbr` destroyed the PBR pathway, and would
+> have justified retraining v3 with a different init. Separating "depends on presence" from
+> "depends on content" is what shows both models are in the same regime.
+
+Supporting evidence from the weights, consistent with the ablation: v2's `z_pbr` half is
+8.17 against a xavier-init expectation of ≈7.55 for its (512,32) shape — i.e. it barely moved
+from its random starting point (+8%), while its emission half went 7.55 → 13.05 (+73%). Its
+62.61% ratio is mostly leftover initialization, not learning.
+
 ## Why
 
 Audit 2026-08-14. The shipped `_v2` run (`step0154600-0.0088`) was never a finetune:
