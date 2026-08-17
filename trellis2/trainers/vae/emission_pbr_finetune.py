@@ -64,6 +64,42 @@ class EmissionPbrFinetuneTrainer(BasicTrainer):
         ).expand(n, -1)  # [N, 3]
         return x.replace(torch.cat([emission, pad], dim=-1))  # [N, 6]
 
+    def _concat_pbr_latent(
+        self,
+        z: sp.SparseTensor,
+        pbr_latent: Optional[sp.SparseTensor],
+    ) -> sp.SparseTensor:
+        """Append the PBR conditioning latent to the emission latent, EMISSION FIRST.
+
+        Returns ``z`` unchanged when there is no PBR latent, which is the v2
+        (unconditioned) regime.  The key is supplied by the dataset only when its
+        ``pbr_latent_name`` is set (``lightgen_slat.py:296-302``, ``:334-335``), so no
+        existing config can reach the concat branch — it is gated structurally, not by
+        convention.
+
+        The coord-equality assert is the only gate that PBR features are paired with the
+        right tokens: equal row counts in a different order would silently mis-condition
+        every voxel and still train to a plausible loss.  On the pbr->emission chain this
+        guard would be redundant (both encoders share one spatial cache, so the frozen PBR
+        encoder is mechanically forced onto the emission tensor's grouping); reading a
+        latent off disk has no such guarantee, so here it is load-bearing.
+
+        The dtype cast is NOT cosmetic.  The npz feats are fp32; under the run's autocast
+        ``z.feats`` is fp16.  ``torch.cat`` silently promotes the pair to fp32, and
+        ``SparseUnetVaeDecoder`` propagates the LATENT's dtype through its entire torso via
+        ``h = h.type(x.dtype)`` (``sparse_unet_vae.py:503,518``) — so without this cast the
+        whole decoder would run in fp32, changing memory, throughput and numerics with no
+        error and no warning.
+        """
+        if pbr_latent is None:
+            return z
+        assert torch.equal(z.coords, pbr_latent.coords), (
+            f"z_emission / pbr_latent coord mismatch: "
+            f"{tuple(z.coords.shape)} vs {tuple(pbr_latent.coords.shape)}"
+        )
+        z_pbr = pbr_latent.feats.to(z.feats.dtype)
+        return z.replace(torch.cat([z.feats, z_pbr], dim=-1))
+
     def prepare_dataloader(self, **kwargs):
         self.data_sampler = BalancedResumableSampler(
             self.dataset,
@@ -82,10 +118,25 @@ class EmissionPbrFinetuneTrainer(BasicTrainer):
         )
         self.data_iterator = cycle(self.dataloader)
 
-    def training_losses(self, x: sp.SparseTensor, **kwargs):
+    def training_losses(
+        self,
+        x: sp.SparseTensor,
+        pbr_latent: Optional[sp.SparseTensor] = None,
+        **kwargs,
+    ):
         """
         x : SparseTensor  [N, emission_ch + pbr_ch]
             Full features from LightGenSLatEmission — only emission_ch used.
+        pbr_latent : SparseTensor [M, 32] or None
+            Pre-encoded PBR conditioning latent, supplied by the dataset only when its
+            ``pbr_latent_name`` is set.  When present the decoder consumes
+            cat([z_emission, z_pbr]) and its ``latent_channels`` must be 64; when absent
+            this is the unconditioned v2 path, unchanged.
+
+            Declaring it explicitly matters: with a bare ``**kwargs`` the key would be
+            swallowed silently (``basic.py`` dispatches ``training_losses(**mb_data)``),
+            so a config that set ``pbr_latent_name`` and ``latent_channels: 64`` would
+            train the v2 model while looking configured for v3.
         """
         target = x.feats[:, :self.emission_channels]  # [N, 3]
         x_packed = self._pack_emission_as_pbr(x)      # [N, 6]
@@ -93,7 +144,7 @@ class EmissionPbrFinetuneTrainer(BasicTrainer):
         z, mean, logvar = self.training_models["encoder"](
             x_packed, sample_posterior=True, return_raw=True
         )
-        y = self.training_models["decoder"](z)
+        y = self.training_models["decoder"](self._concat_pbr_latent(z, pbr_latent))
 
         # Loss only on emission channels (first 3 of 6)
         pred_emission = y.feats[:, :self.emission_channels]
@@ -159,7 +210,7 @@ class EmissionPbrFinetuneTrainer(BasicTrainer):
             x_packed = self._pack_emission_as_pbr(x)
 
             z = self.models["encoder"](x_packed)
-            y = self.models["decoder"](z)
+            y = self.models["decoder"](self._concat_pbr_latent(z, data.get("pbr_latent")))
             pred_emission = y.feats[:, :self.emission_channels]
             errors.append((target - pred_emission).abs().mean().item())
             if len(errors) * batch_size >= num_samples:
