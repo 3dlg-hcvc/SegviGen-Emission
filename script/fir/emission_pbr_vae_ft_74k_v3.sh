@@ -154,7 +154,8 @@ if [ ! -d "\${LATDIR}" ]; then
     echo "FATAL: \${LATDIR} does not exist. v3 conditions the decoder on the pre-encoded PBR latents."
     exit 1
 fi
-# Count WITHOUT a glob. `ls "\${LATDIR}"/*.npz` looks natural and is a trap:
+# Count WITHOUT a glob. Writing it as ls "\${LATDIR}"/[star].npz looks
+# natural and is a trap:
 # the shell expands 72,421 paths into the argv and ls dies with "Argument
 # list too long", so the count comes back 0 and this guard fails a job that
 # had nothing wrong with it. (Cost one 125-minute queue wait, 2026-08-17.)
