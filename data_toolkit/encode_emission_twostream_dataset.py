@@ -102,13 +102,18 @@ def main() -> None:
     shas = shas_all[start:end]
     print(f"Samples in parquet: {len(shas_all)}  rank {args.rank}/{args.world_size} → {len(shas)}")
 
-    all_feats = []
+    # NOTE: the encode loop deliberately accumulates NOTHING. An earlier version
+    # appended every shape's feats to an `all_feats` list here, but that list is
+    # provably dead: a non-aggregating rank returns and discards it, and the
+    # --aggregate_stats path resets it to [] and re-reads every .npz from disk.
+    # It was pure leak -- ~16 GB resident per rank after only ~5k shapes, which
+    # fir's 512 GB nodes absorbed but which the 62 GB workstation could not: the
+    # kernel OOM-killed rank 0 during startup on 2026-08-24. Removing it changes
+    # no output, because the stats come from the disk re-read below.
     processed, skipped, missing = 0, 0, 0
     for i, sha in enumerate(shas):
         out_path = os.path.join(save_dir, f"{sha}.npz")
         if args.skip_existing and os.path.exists(out_path):
-            d = np.load(out_path)
-            all_feats.append(torch.from_numpy(d["feats"]).float())
             skipped += 1
             continue
 
@@ -127,7 +132,6 @@ def main() -> None:
         z_feats = z.feats.cpu().numpy().astype(np.float32)
         z_coords = z.coords[:, 1:].cpu().numpy().astype(np.uint8)
         np.savez_compressed(out_path, feats=z_feats, coords=z_coords)
-        all_feats.append(z.feats.cpu())
         processed += 1
 
         if (i + 1) % 50 == 0 or i == len(shas) - 1:
