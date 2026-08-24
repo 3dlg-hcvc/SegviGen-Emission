@@ -23,6 +23,7 @@ if command -v sbatch >/dev/null 2>&1; then SUBMIT=(sbatch); else SUBMIT=(ssh -o 
 #SBATCH --output=%N-%j.out
 #SBATCH --mem=512G
 #SBATCH --account=${ACCOUNT}
+#SBATCH --requeue
 module load StdEnv/2023 gcc python/3.11 cuda/12.6 arrow/21.0.0 opencv/4.13.0 sparsehash
 cd ${REPO} && git fetch origin ${BRANCH} && git checkout ${BRANCH} && git pull --ff-only origin ${BRANCH}
 source ${REPO}/env/bin/activate
@@ -32,6 +33,16 @@ D=${REPO}/data/lightgen_74k_newbake
 NVOX=\$(ls "\${D}/emission_voxels_256" | grep -c "\.vxz\$")
 echo "emission_voxels_256: \${NVOX} (expected 72421)"
 [ "\${NVOX}" -ge 72421 ] || { echo "FATAL: emission_voxels_256 incomplete"; exit 1; }
+
+# A shared/multi-tenant node can leave a foreign process holding GPU memory before we
+# start (fc10218 held 69-71 GB of GPU 0 for an unrelated vLLM job on 2026-08-24 and OOM'd
+# rank 0 mid-run). Refuse to start on an occupied card rather than crash partway through
+# a shard -- --skip_existing makes a requeue-and-retry cheap, a mid-shard OOM is not.
+BUSY=\$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | awk '\$1 > 2048' | wc -l)
+if [ "\${BUSY}" -gt 0 ]; then
+    echo "FATAL: \${BUSY} GPU(s) on \$(hostname) already hold >2 GB before encoding; node is busy/sick. Requeueing."
+    scontrol requeue \${SLURM_JOB_ID}; sleep 60; exit 0
+fi
 set -o pipefail; mkdir -p log; TS=\$(date +%Y%m%d-%H%M%S); LOG="log/\${TS}-${NAME}.log"
 {
   pids=()
