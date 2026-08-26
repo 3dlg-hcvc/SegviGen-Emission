@@ -3,6 +3,19 @@
 # cond (embedding mode), per-shape weighted loss semantics, p_uncond 0.
 # Normalization stats embedded verbatim from TRELLIS.2-4B pipeline.json.
 # Init: full_seg rekeyed (640/640 keys, in_channels 64 so ALL tensors load).
+#
+# LR / BATCH RECIPE (owner-ratified 2026-08-26, "Option A, conservative"):
+# lr stays at 1e-5, unscaled, for every new lightning experiment -- no lr
+# scaling with batch size or GPU count until a first full lightning
+# training curve exists and has been reviewed. batch_size_per_gpu is set
+# by available memory per GPU class (4 is the target, 2 is the fallback
+# measured to fit on a 44GB A40; see the batch probe in the lightning_port
+# board notes for the per-GPU-class numbers). Every run's config and report
+# must state the EFFECTIVE batch size (batch_size_per_gpu * num_gpus *
+# grad_accum) explicitly, since it is not fixed across runs under this
+# recipe. This config's own effective batch = batch_size_per_gpu (4 below)
+# * num_gpus passed on the command line * batch_split (1) -- state the
+# product for whatever launch actually ran.
 models:
   denoiser:
     name: SegviGenSLatFlowModel

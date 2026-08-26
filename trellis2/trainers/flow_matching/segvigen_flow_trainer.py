@@ -48,6 +48,25 @@ class SegviGenFlowTrainer(ImageConditionedSparseFlowMatchingCFGTrainer):
             return ClassifierFreeGuidanceMixin.get_cond(self, cond, **kwargs)
         return super().get_cond(cond, **kwargs)
 
+    def get_inference_cond(self, cond, **kwargs):
+        # mirror of get_cond above: run_snapshot's sampling path hits this,
+        # and ImageConditionedMixin.get_inference_cond would call
+        # encode_image() on our precomputed (B, 1029, 1024) DINOv3 tokens
+        # and assert (it expects a raw image tensor/PIL list).
+        if isinstance(cond, torch.Tensor) and cond.ndim == 3:
+            kwargs["neg_cond"] = torch.zeros_like(cond)
+            return ClassifierFreeGuidanceMixin.get_inference_cond(self, cond, **kwargs)
+        return super().get_inference_cond(cond, **kwargs)
+
+    def vis_cond(self, cond, **kwargs):
+        # ImageConditionedMixin.vis_cond assumes cond is a real image tensor
+        # and hands it straight to save_image; our precomputed cond has no
+        # image representation, so there is nothing honest to render here.
+        # Returning {} means "no cond panel", not "broken panel".
+        if isinstance(cond, torch.Tensor) and cond.ndim == 3:
+            return {}
+        return super().vis_cond(cond, **kwargs)
+
     def _per_voxel_weights(self, mask_feats: torch.Tensor) -> torch.Tensor:
         if self.balanced_pos_weight > 0:
             p = mask_feats.mean().clamp(min=1e-4)

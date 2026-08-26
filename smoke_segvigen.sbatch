@@ -35,6 +35,8 @@ python train.py \
   --override trainer.args.i_save=10 \
   --override trainer.args.i_log=1 \
   --override trainer.args.val_every_epochs=999 \
+  --override trainer.args.ckpt_last_every_n_steps=10 \
+  --override trainer.args.disable_final_snapshot=true \
   2>&1 | tee log/$(date +%Y%m%d-%H%M%S)-smoke_segvigen.log
 echo "TRAIN_EXIT=${PIPESTATUS[0]}"
 ls -la outputs/smoke_segvigen/ckpts/ || true

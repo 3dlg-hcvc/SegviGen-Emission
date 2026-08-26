@@ -267,12 +267,21 @@ class SnapshotCallback(pl.Callback):
         val_num_samples: int = 16,
         sample_every_n_steps: int = 0,
         skip_initial_samples: bool = False,
+        disable_final_snapshot: bool = False,
     ) -> None:
         super().__init__()
         self.snapshot_batch_size = int(snapshot_batch_size)
         self.val_num_samples = int(val_num_samples)
         self.sample_every_n_steps = int(sample_every_n_steps)
         self.skip_initial_samples = bool(skip_initial_samples)
+        # Escape hatch for datasets that don't implement visualize_sample yet
+        # (e.g. SegviGenEmissiveDirect): on_train_end's snapshot is otherwise
+        # unconditional and will try to save_image() raw SparseTensor /
+        # string batch fields. Fixing that needs a real visualize_sample on
+        # the dataset (follow-up); until then, set this true to skip only
+        # the final snapshot while keeping everything else (mid-training
+        # snapshots via sample_every_n_steps, checkpoints) intact.
+        self.disable_final_snapshot = bool(disable_final_snapshot)
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         if not trainer.is_global_zero:
@@ -301,6 +310,8 @@ class SnapshotCallback(pl.Callback):
 
     def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         if not trainer.is_global_zero:
+            return
+        if self.disable_final_snapshot:
             return
         if hasattr(pl_module, "snapshot"):
             pl_module.snapshot(suffix="final", num_samples=self.val_num_samples, batch_size=self.snapshot_batch_size)

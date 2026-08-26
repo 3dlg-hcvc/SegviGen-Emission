@@ -493,6 +493,7 @@ def build_trainer(
             val_num_samples=int(trainer_args.get("val_num_samples", 16)),
             sample_every_n_steps=sample_every_n_steps,
             skip_initial_samples=bool(trainer_args.get("skip_initial_samples", False)),
+            disable_final_snapshot=bool(trainer_args.get("disable_final_snapshot", False)),
         )
     )
 
