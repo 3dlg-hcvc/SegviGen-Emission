@@ -102,6 +102,14 @@ while true; do
                 [ $((S % EVERY)) -eq 0 ] || continue
                 snap_one "$S" || true
             done
+            # The final save at step MAX prints SAVE_START but no RESUME_AFTER_SAVE (training ends
+            # instead of resuming) — measured on 249207: step 50000 was saved 19:43:19 and the run
+            # exited 19:43:39, so the loop above never saw it. If the log confirms the run reached
+            # MAX and last.ckpt is complete (size matches the previous snapshot), take it too.
+            if grep -qE "SAVE_START step=$MAX " "$LOG" && [ ! -f "$SNAP/$(printf 'last-step%07d.ckpt' "$MAX").jup.done" ]; then
+                echo "[snap] final save at step $MAX detected without RESUME_AFTER_SAVE; snapshotting last.ckpt"
+                snap_one "$MAX" || true
+            fi
             break
         fi
     fi
