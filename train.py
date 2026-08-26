@@ -54,6 +54,7 @@ TRAINER_MAP = {
     "SparseFlowMatchingCFGTrainer": trellis_trainers.SparseFlowMatchingCFGTrainer,
     "TextConditionedSparseFlowMatchingCFGTrainer": trellis_trainers.TextConditionedSparseFlowMatchingCFGTrainer,
     "ImageConditionedSparseFlowMatchingCFGTrainer": trellis_trainers.ImageConditionedSparseFlowMatchingCFGTrainer,
+    "SegviGenFlowTrainer": trellis_trainers.SegviGenFlowTrainer,
     "MultiImageConditionedSparseFlowMatchingCFGTrainer": trellis_trainers.MultiImageConditionedSparseFlowMatchingCFGTrainer,
 }
 

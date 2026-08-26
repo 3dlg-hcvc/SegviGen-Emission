@@ -19,6 +19,7 @@ __attributes = {
     'SparseFlowMatchingCFGTrainer': 'flow_matching.sparse_flow_matching',
     'TextConditionedSparseFlowMatchingCFGTrainer': 'flow_matching.sparse_flow_matching',
     'ImageConditionedSparseFlowMatchingCFGTrainer': 'flow_matching.sparse_flow_matching',
+    'SegviGenFlowTrainer': 'flow_matching.segvigen_flow_trainer',
     'MultiImageConditionedSparseFlowMatchingCFGTrainer': 'flow_matching.sparse_flow_matching',
 
     'DinoV2FeatureExtractor': 'flow_matching.mixins.image_conditioned',

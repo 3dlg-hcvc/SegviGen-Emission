@@ -19,6 +19,7 @@ __attributes = {
     # UV-space datasets archived at archive/datasets/lightgen_uv.py
     'LightGenSLatEmission': 'lightgen_slat',
     'LightGenSLatEmissionLatent': 'lightgen_slat',
+    'SegviGenEmissiveDirect': 'segvigen_direct',
 }
 
 __submodules = []

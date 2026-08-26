@@ -9,6 +9,7 @@ __attributes = {
     # SLat Generation
     'SLatFlowModel': 'structured_latent_flow',
     'ElasticSLatFlowModel': 'structured_latent_flow',
+    'SegviGenSLatFlowModel': 'segvigen_flow',
     
     # SC-VAEs
     'SparseUnetVaeEncoder': 'sc_vaes.sparse_unet_vae',
