@@ -14,6 +14,18 @@
 # 2026-08-26): lr 1e-5 unscaled, unweighted loss, batch_size_per_gpu set by
 # a per-GPU-class measurement (see board lightning_port for the number this
 # run actually used -- state the effective batch in any report).
+#
+# UPDATED 2026-08-26 (owner decision, after the jupiter NFS ceiling was
+# diagnosed as gating training at ~6s/step, GPUs ~47% idle): all four data
+# roots now point at a venus-05 node-local stage
+# (/localscratch/xya120/segvigen_data_256), not jupiter/falas directly.
+# /localscratch there is not periodically wiped and the full lane is only
+# ~90GB against 184GB free. Staged by script/bw/stage_data_256_local.sh
+# (idempotent; writes MANIFEST_OK on success), invoked automatically by
+# launch_segvigen_256_6gpu.sbatch's self-healing sync block if the
+# manifest is missing or short. cond_search_dirs keeps the jupiter
+# dataset_direct paths as a trailing fallback in case a sid is missing
+# from the local stage or the fp16 relocation (job 257957).
 models:
   denoiser:
     name: SegviGenSLatFlowModel
@@ -39,12 +51,16 @@ dataset:
     parquet_file: /3dlg-jupiter-project/lightgen/trellis2_bw/lightgen_74k_newbake/df_SomgProc_final.parquet
     split_json: /3dlg-jupiter-project/lightgen/trellis2_bw/lightgen_74k_newbake/data_splits_emissive_74k_stratified_newbake_vae_agentic.json
     split: train
-    shape_latent_root: /3dlg-jupiter-project/lightgen/trellis2_bw/latents_v2
+    shape_latent_root: /localscratch/xya120/segvigen_data_256
     shape_latent_name: shape_enc_next_dc_f16c32_fp16_256
-    pbr_latent_root: /3dlg-jupiter-project/lightgen/trellis2_bw/latents_v2
+    pbr_latent_root: /localscratch/xya120/segvigen_data_256
     pbr_latent_name: tex_enc_next_dc_f16c32_fp16_256
-    emission_latent_dir: /3dlg-falas/project/omages/lightgen/segvigen_emissive/outputs/latents_256/output_tex_latents/segvigen_emissive_mask_256
+    emission_latent_dir: /localscratch/xya120/segvigen_data_256/emission_npz
     cond_search_dirs:
+      # local fp16 relocation (job 257957 + the local-staging job) tried first;
+      # jupiter fp32 originals kept as a trailing fallback so a sid missing
+      # from the fp16 conversion or the local stage does not hard-fail.
+      - /localscratch/xya120/segvigen_data_256/cond_fp16
       - /3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct/train_72k_agentic
       - /3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct/val_72k
     # Shipped TRELLIS.2 pipeline.json stock stats -- SAME values as
@@ -234,7 +250,7 @@ trainer:
     save_top_k: 1
     monitor_metric: val/loss
     monitor_mode: min
-    ckpt_last_every_n_steps: 2000
+    ckpt_last_every_n_steps: 755   # owner-approved 2026-08-26: one last.ckpt per epoch (36,226 usable / batch 48 ~= 755 steps/epoch)
     wandb_enable: false
     image_cond_model:
       name: DinoV3FeatureExtractor

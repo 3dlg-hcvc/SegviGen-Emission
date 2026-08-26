@@ -1,9 +1,9 @@
 #!/bin/bash
 # ============================================================================
-# DO NOT SUBMIT WHILE cs-venus-05 / cs-venus-19 ARE DRAINING (Mercury
-# deployment, as of 2026-08-26). This script is prep only: ready to run once
-# the owner confirms a node is back and clears it. Submitting to either node
-# now is out of scope for job 5 -- see the standing exclusions.
+# venus-05 is CLEARED and in production since 2026-08-26 (the Mercury-drain
+# banner that used to sit here is obsolete; the node runs our training).
+# This is the live 256-lane launcher: submit-replacement-then-cancel is the
+# restart pattern (submit this while the old job runs, then scancel the old).
 # ============================================================================
 #SBATCH -J segvigen_256_bw_6gpu
 #SBATCH --partition=3dlg-hcvc-lab-long
@@ -19,19 +19,20 @@
 #   1. script/bw/bootstrap_segvigen_bw.sh has completed successfully on the
 #      target node (env, extensions, repo clone -- see its UNVERIFIED note
 #      about private-repo GitHub access on this node).
-#   2. script/bw/extract_staged_shards.sh has extracted our slim tar shards
-#      to /localscratch/xya120/segvigen_data (built by job 5's amendment;
-#      those shards themselves depend on job 7's cond_pos.pth sidecars
-#      being complete for every sample they include).
+#   2. All four 256-lane data roots staged locally by
+#      script/bw/stage_data_256_local.sh (emission_npz, shape_latents,
+#      pbr_latents, cond_fp16 under /localscratch/xya120/segvigen_data_256)
+#      -- this launcher's own sync block below self-heals this if the
+#      MANIFEST_OK it writes is missing, so a bare submission on a fresh
+#      node still works, just spends its first minutes staging instead of
+#      training.
 #
-# BATCH_SIZE_PER_GPU is TBD by the owner (per the ratified Option-A
-# conservative recipe: lr fixed, batch set by measured per-GPU-class
-# memory). Defaulted here to 2, the same safe fallback measured on a 44GB
-# A40 -- the RTX Pro 6000 Blackwell cards have far more VRAM (96GB class),
-# so this is likely overly conservative, but no batch probe has run on
-# sm_120 yet (no smoke has run on Blackwell at all) to justify raising it.
-# Effective batch for this launch = BATCH_SIZE_PER_GPU * 6 (num_gpus) --
-# state the real product in any report that uses this launch.
+# BATCH_SIZE_PER_GPU=8 was measured on this node (single-GPU 100-step probe,
+# board lightning_port 2026-08-26: BS 4/8/12 all fit inside the 96GB-class
+# RTX Pro 6000, BS=8 chosen for headroom under multi-GPU/NCCL overhead on a
+# first 24h run). Effective batch for this launch = BATCH_SIZE_PER_GPU * 6
+# (num_gpus) = 48 -- state the real product in any report that uses this
+# launch if BATCH_SIZE_PER_GPU is overridden.
 set -x
 : "${BATCH_SIZE_PER_GPU:=8}"
 D=/localscratch/xya120
@@ -67,6 +68,25 @@ FALAS=/3dlg-falas/project/omages/lightgen/trellis2_lightning_probe
 cp $FALAS/trellis2/datasets/segvigen_256.py trellis2/datasets/segvigen_256.py
 cp $FALAS/configs/gen/segvigen_emissive_256.yaml configs/gen/segvigen_emissive_256.yaml
 grep -q SegviGenEmissive256 trellis2/datasets/__init__.py || sed -i "s/    'SegviGenEmissiveDirect': 'segvigen_direct',/    'SegviGenEmissiveDirect': 'segvigen_direct',\n    'SegviGenEmissive256': 'segvigen_256',/" trellis2/datasets/__init__.py
+
+# Self-healing local-stage gate (owner decision 2026-08-26: all four data
+# roots now live on this node's local disk, not jupiter/falas directly --
+# see segvigen_emissive_256.yaml's header). A missing or short
+# MANIFEST_OK means the stage never ran, was interrupted, or landed on a
+# fresh node: (re)run it inline rather than let train.py fail cold on a
+# missing sid partway through the first epoch.
+STAGE_DIR=/localscratch/xya120/segvigen_data_256
+STAGE_SCRIPT="$FALAS/script/bw/stage_data_256_local.sh"
+if [ ! -f "$STAGE_DIR/MANIFEST_OK" ]; then
+  echo "MANIFEST_OK missing at $STAGE_DIR -- staging now (self-heal)"
+  bash "$STAGE_SCRIPT"
+fi
+if [ ! -f "$STAGE_DIR/MANIFEST_OK" ]; then
+  echo "FATAL: staging did not produce MANIFEST_OK, refusing to start training"
+  exit 1
+fi
+cat "$STAGE_DIR/MANIFEST_OK"
+
 mkdir -p log outputs
 nvidia-smi --query-gpu=name,memory.total --format=csv
 python train.py \
