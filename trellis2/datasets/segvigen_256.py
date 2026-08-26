@@ -77,20 +77,36 @@ class SegviGenEmissive256(Dataset):
         self.tx_norm = {"mean": tex_normalization["mean"], "std": tex_normalization["std"]}
 
         base = _build_parquet_samples(data_root, parquet_file, split, 0.0, None, split_json)
+        # Admission by directory-listing set intersection: one listdir per root
+        # (4 listings total) instead of 4 NFS stats x 36k sids. The per-sid
+        # exists() version of this loop cost 30-60 min of dead GPU time at
+        # every dataset construction (found live on job 257886, 2026-08-26).
+        shape_set = {f[:-4] for f in os.listdir(self.shape_dir) if f.endswith(".npz")}
+        pbr_set = {f[:-4] for f in os.listdir(self.pbr_dir) if f.endswith(".npz")}
+        emit_set = {f[:-4] for f in os.listdir(self.emit_dir) if f.endswith(".npz")}
+        cond_set: set = set()
+        for d in self.cond_search_dirs:
+            try:
+                cond_set |= set(os.listdir(d))
+            except FileNotFoundError:
+                pass
+        # cond membership = the sid dir exists under a cond root; cond_pos.pth
+        # presence inside it was verified corpus-wide 2026-08-26 (the sidecar
+        # fill), and _find_cond_dir still re-checks per sample at load time.
         self.sids: List[str] = []
         n_skip = {"shape": 0, "pbr": 0, "emit": 0, "cond": 0}
         for s in base:
             sid = s["sha256"]
-            if not os.path.exists(os.path.join(self.shape_dir, f"{sid}.npz")):
+            if sid not in shape_set:
                 n_skip["shape"] += 1
                 continue
-            if not os.path.exists(os.path.join(self.pbr_dir, f"{sid}.npz")):
+            if sid not in pbr_set:
                 n_skip["pbr"] += 1
                 continue
-            if not os.path.exists(os.path.join(self.emit_dir, f"{sid}.npz")):
+            if sid not in emit_set:
                 n_skip["emit"] += 1
                 continue
-            if self._find_cond_dir(sid) is None:
+            if sid not in cond_set:
                 n_skip["cond"] += 1
                 continue
             self.sids.append(sid)
@@ -99,15 +115,29 @@ class SegviGenEmissive256(Dataset):
         print(f"[SegviGenEmissive256] split={split!r}: {len(base)} in split_json, "
               f"{len(self.sids)} usable (SKIPPED: {n_skip} -- loud by design)")
 
-        # Per-sample token count for BalancedResumableSampler (mirrors
-        # LightGenSLatEmissionLatent: cheap, just the npz coords header).
+        # Per-sample token count for BalancedResumableSampler. Prefer the
+        # precomputed manifest (scripts_segvigen/build_token_manifest.py writes
+        # <emit_dir>/token_counts.json); opening 36k npz headers over NFS at
+        # every construction was the other half of the dead-GPU startup cost.
+        manifest = {}
+        mpath = os.path.join(self.emit_dir, "token_counts.json")
+        if os.path.exists(mpath):
+            import json as _json
+            with open(mpath) as f:
+                manifest = _json.load(f)
+        else:
+            print(f"[SegviGenEmissive256] WARNING: no token_counts.json in "
+                  f"{self.emit_dir}; falling back to per-npz header reads (slow)")
         self.loads: List[int] = []
         for sid in self.sids:
-            try:
-                with np.load(os.path.join(self.emit_dir, f"{sid}.npz")) as d:
-                    self.loads.append(int(d["coords"].shape[0]))
-            except Exception:
-                self.loads.append(0)
+            n = manifest.get(sid)
+            if n is None:
+                try:
+                    with np.load(os.path.join(self.emit_dir, f"{sid}.npz")) as d:
+                        n = int(d["coords"].shape[0])
+                except Exception:
+                    n = 0
+            self.loads.append(int(n))
 
     def _find_cond_dir(self, sid: str) -> Optional[str]:
         for d in self.cond_search_dirs:
