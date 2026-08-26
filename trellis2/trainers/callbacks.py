@@ -258,6 +258,19 @@ class CheckpointTimingCallback(pl.Callback):
         if self.batch_log_every > 0 and step > 0 and step % self.batch_log_every == 0:
             self._emit(f"[ckpt-timing] BATCH_TIME step={step} dt={dt:.2f}s")
 
+    def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        # Peak VRAM for the whole run (throughput/VRAM probes read this line;
+        # torch.cuda.max_memory_allocated is a running high-water mark, so
+        # this captures the worst step even if it wasn't the last one).
+        if not bool(getattr(trainer, "is_global_zero", True)):
+            return
+        if not torch.cuda.is_available():
+            return
+        for i in range(torch.cuda.device_count()):
+            alloc_gb = torch.cuda.max_memory_allocated(i) / 1e9
+            reserved_gb = torch.cuda.max_memory_reserved(i) / 1e9
+            self._emit(f"[ckpt-timing] PEAK_VRAM device={i} allocated_gb={alloc_gb:.2f} reserved_gb={reserved_gb:.2f}")
+
 
 class SnapshotCallback(pl.Callback):
     def __init__(

@@ -1,8 +1,16 @@
 # SegviGen-emissive on the lightning framework: dataset_direct data,
 # voxel-axis 2N conditioning (SegviGenSLatFlowModel), precomputed DINOv3
-# cond (embedding mode), per-shape weighted loss semantics, p_uncond 0.
+# cond (embedding mode), per-shape mean loss reduction, p_uncond 0.
 # Normalization stats embedded verbatim from TRELLIS.2-4B pipeline.json.
 # Init: full_seg rekeyed (640/640 keys, in_channels 64 so ALL tensors load).
+#
+# LOSS WEIGHTING (owner-set 2026-08-26): the production recipe trains
+# UNWEIGHTED -- pos_weight 1.0, balanced_pos_weight 0.0 below, matching
+# every real run (the July w5 per-voxel-weighted experiments lost and
+# weighting was retired). require_mask is therefore false: emis_mask.pth
+# is only needed when a config actually turns weighting back on.
+# SegviGenFlowTrainer's weighting code stays in place (dormant, config-off)
+# and the per-shape mean reduction applies regardless of weighting.
 #
 # LR / BATCH RECIPE (owner-ratified 2026-08-26, "Option A, conservative"):
 # lr stays at 1e-5, unscaled, for every new lightning experiment -- no lr
@@ -40,7 +48,7 @@ dataset:
     dataset_root: /3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct
     split: train_72k_agentic
     cond_mode: embedding
-    require_mask: true
+    require_mask: false
     shape_normalization:
       mean:
       - 0.781296

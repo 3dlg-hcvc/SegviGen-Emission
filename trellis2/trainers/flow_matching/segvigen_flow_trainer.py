@@ -7,17 +7,22 @@ Differences from ImageConditionedSparseFlowMatchingCFGTrainer, each deliberate:
    encoder never runs and neg_cond is zeros_like(cond), which is exactly what
    the standalone lane precomputed (its cond.pth stores the same zero negative).
    Image input still works and takes the parent's encode path.
-2. PER-SHAPE WEIGHTED LOSS. The standalone lane's --pos_weight /
-   --balanced_pos_weight per-voxel weighting, and its PER-SHAPE mean reduction
-   (each shape's weighted token-mean, averaged over shapes), are reproduced.
-   A token-count-weighted batch mean is NOT the same gradient; the assessment
-   page flags this as a decision, and the decision here is: keep our lane's
-   semantics so runs remain comparable to the standalone arm.
+2. PER-SHAPE MEAN LOSS REDUCTION (always on, independent of weighting).
+   Each shape's token-mean is computed first, then averaged over shapes in
+   the batch. A token-count-weighted batch mean is NOT the same gradient;
+   the assessment page flags this as a decision, and the decision here is:
+   keep our lane's semantics so runs remain comparable to the standalone
+   arm. The standalone lane's --pos_weight / --balanced_pos_weight
+   per-voxel weighting is reproduced too, but DORMANT by default
+   (pos_weight 1.0, balanced_pos_weight 0.0 -- owner-set 2026-08-26: the
+   production recipe trains unweighted; the July w5 weighted experiments
+   lost). emis_mask is only required when a config turns weighting back
+   on (dataset's require_mask defaults to false accordingly).
 3. p_uncond defaults to 0.0: our lane never trained with CFG dropout.
 
-Batch keys consumed here: x_0, cond, emis_mask, sha256; everything else
-(concat_cond, appearance_cond) passes through to the model, which is how
-SegviGenSLatFlowModel receives its extra tokens.
+Batch keys consumed here: x_0, cond, emis_mask (optional, weighting only),
+sha256; everything else (concat_cond, appearance_cond) passes through to
+the model, which is how SegviGenSLatFlowModel receives its extra tokens.
 """
 from typing import Dict, Tuple
 

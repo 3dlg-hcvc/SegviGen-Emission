@@ -484,7 +484,7 @@ def build_trainer(
     # Diagnostic: log ckpt save/load events + per-100-step batch time so we
     # can correlate KL/L1 spikes against ckpt I/O (Lustre is slow for 13 GB
     # writes; spikes-after-save and spikes-after-resume are both possible).
-    callbacks.append(CheckpointTimingCallback(batch_log_every=100))
+    callbacks.append(CheckpointTimingCallback(batch_log_every=int(trainer_args.get("batch_log_every", 100))))
 
     sample_every_n_steps = int(trainer_args.get("i_sample", 0) or 0)
     callbacks.append(

@@ -3,7 +3,12 @@
 Reads the SAME per-shape files the standalone trainer
 (segvigen_emissive/emissive/train/train_emissive.py) reads:
     shape_slat.pth, input_tex_slat.pth, output_tex_slat.pth   (sparse latents)
-    emis_mask.pth                                             (per-voxel weight mask)
+    emis_mask.pth                                             (per-voxel weight mask;
+                                                                optional -- only needed
+                                                                when require_mask=True,
+                                                                i.e. a weighted-loss config;
+                                                                the production recipe
+                                                                trains unweighted)
     cond_pos.pth / cond.pth                                   (precomputed DINOv3 tokens)
 and applies the SAME normalization (TRELLIS.2's shipped pipeline.json stats,
 passed in via the config so the run records them).
@@ -66,7 +71,7 @@ class SegviGenEmissiveDirect(Dataset):
         cond_mode: str = "embedding",
         thumbnail_dir: Optional[str] = None,
         image_size: int = 512,
-        require_mask: bool = True,
+        require_mask: bool = False,
         max_samples: int = 0,
         **_framework_extra,
     ):
