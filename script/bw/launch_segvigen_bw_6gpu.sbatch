@@ -44,6 +44,22 @@ export TORCH_CUDA_ARCH_LIST="12.0"
 export HF_HUB_OFFLINE=1
 export WANDB_MODE=offline
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# --- sm_120 facts, all confirmed venus-19-proven in Dongchen's launcher
+# (script/star2/emission_dit_pbr2emission_74k_v3_nonzero_nocopy_venus19.sh,
+# commit 1dc7824) -- job 10 documentation harvest, read before this launch
+# was written:
+# flash-attn has no sm_120 support -> fall back to sdpa/xformers.
+export ATTN_BACKEND=sdpa
+export SPARSE_ATTN_BACKEND=xformers
+# flex_gemm's autotune file-cache races across ranks on a shared filesystem;
+# in-memory-only autotune avoids it.
+export FLEX_GEMM_USE_AUTOTUNE_CACHE=0
+export FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
+# Lightning's SLURM-coordinated launcher errors (ntasks=1 vs devices=6) when
+# it detects a SLURM job name it recognizes; this is the one-task-native-spawn
+# trick, NOT --ntasks-per-node=<gpus> (star2 convention).
+export SLURM_JOB_NAME=bash
+# --- end sm_120 facts ---
 cd "$REPO"
 mkdir -p log outputs
 nvidia-smi --query-gpu=name,memory.total --format=csv
