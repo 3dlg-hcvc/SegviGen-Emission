@@ -104,6 +104,14 @@ def main():
             sids_with_src.append((sid, os.path.join(split_dir, sid)))
     print(f"[verify_cond_fp16] {len(sids_with_src)} candidate sids across both splits")
 
+    # restrict to sids job 257957 has already converted -- the conversion
+    # array may still be running, this is not a partial-tree error
+    converted = set(os.listdir(FP16_ROOT))
+    before = len(sids_with_src)
+    sids_with_src = [(sid, d) for sid, d in sids_with_src if sid in converted]
+    print(f"[verify_cond_fp16] {len(sids_with_src)}/{before} already fp16-converted "
+          f"(job 257957 may still be running)")
+
     numerical_check(sids_with_src, args.n, args.seed)
     reader_check(sids_with_src, args.n, args.seed)
     print("[verify_cond_fp16] ALL CHECKS PASSED")
