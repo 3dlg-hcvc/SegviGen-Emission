@@ -97,7 +97,7 @@ def extract_bare_denoiser_state(payload, ema_rate: str = None):
 
 
 def unrekey(src: str, dst: str, ema_rate: str = None) -> None:
-    payload = torch.load(src, map_location="cpu")
+    payload = torch.load(src, map_location="cpu", weights_only=False)
     bare, source_desc = extract_bare_denoiser_state(payload, ema_rate=ema_rate)
     print(f"[unrekey] read {len(bare)} bare keys from {source_desc}")
 
