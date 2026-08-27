@@ -124,16 +124,27 @@ def main():
     ap.add_argument("--val_loss", type=float, default=None, help="val loss, from the filename")
     ap.add_argument("--store", required=True, help="live_eval store root on falas")
     ap.add_argument("--sids_file", default=DEFAULT_SIDS_FILE)
-    ap.add_argument("--n", type=int, default=10, help="how many shapes, taken from the top of the list")
+    ap.add_argument("--sids_dir", default=None,
+                    help="score every shape in this directory instead of --sids_file; this is "
+                         "how the full validation tier is pointed at val_72k")
+    ap.add_argument("--n", type=int, default=10,
+                    help="how many shapes, taken from the top of the list; 0 means all of them")
+    ap.add_argument("--tier", default="quick", choices=["quick", "full_val"],
+                    help="quick: the ten-shape screen that runs on every epoch. full_val: the "
+                         "whole validation split, which is what checkpoint selection is judged on")
+    ap.add_argument("--no_thumbs", action="store_true",
+                    help="score without painting panels; the full tier uses this, since two "
+                         "thousand panels per checkpoint would swamp the page and the disk")
     ap.add_argument("--draws", type=int, default=5)
     ap.add_argument("--steps", type=int, default=12, help="sampler steps per draw")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--thumb_px", type=int, default=192)
     ap.add_argument("--ema", default=None, help="pull this EMA rate instead of the raw weights")
     ap.add_argument("--keep_ckpt", action="store_true",
-                    help="keep the staged checkpoint after a successful evaluation "
-                         "(default is to delete it: it is a 10GB copy of a file that still "
-                         "exists on the training node)")
+                    help="keep the checkpoint after a successful evaluation. The snapshot "
+                         "lane always passes this: a snapshot of last.ckpt is the ONLY copy "
+                         "of that epoch, because the training run overwrites its own last "
+                         "pointer and keeps no per-epoch file of its own")
     args = ap.parse_args()
     device = "cuda"
 
@@ -141,12 +152,20 @@ def main():
     rec_dir = os.path.join(store, "records")
     img_dir = os.path.join(store, "img")
     step_img_dir = os.path.join(img_dir, f"step{args.step:07d}")
-    for d in (rec_dir, img_dir, step_img_dir):
+    dirs = [rec_dir, img_dir] + ([] if args.no_thumbs else [step_img_dir])
+    for d in dirs:
         os.makedirs(d, exist_ok=True)
 
-    sids_all = [l.strip() for l in open(args.sids_file) if l.strip()]
-    sids = sids_all[: args.n]
-    print(f"[live_eval] checkpoint step {args.step}, {len(sids)} shapes x {args.draws} draws", flush=True)
+    if args.sids_dir:
+        sids_all = sorted(d for d in os.listdir(args.sids_dir)
+                          if os.path.isdir(os.path.join(args.sids_dir, d)))
+        source = args.sids_dir
+    else:
+        sids_all = [l.strip() for l in open(args.sids_file) if l.strip()]
+        source = args.sids_file
+    sids = sids_all if args.n <= 0 else sids_all[: args.n]
+    print(f"[live_eval] checkpoint step {args.step}, tier {args.tier}, {len(sids)} shapes "
+          f"x {args.draws} draws, from {source}", flush=True)
 
     t_start = time.time()
     # The bridged denoiser is a 2.6GB intermediate that only this process reads.
@@ -217,11 +236,13 @@ def main():
         # One projection per shape, shared by every panel of that shape and by
         # every checkpoint that ever evaluates it, so cells stay comparable and
         # seven panels cost barely more than one.
-        view = thumbs.ShapeView(vox_coords, size=args.thumb_px)
-        for name, mask in (("geom", None), ("gt", gt_e_np)):
-            p = os.path.join(img_dir, f"{sid}_{name}.png")
-            if not os.path.exists(p):
-                thumbs.save_png(view.render(mask), p)
+        view = None
+        if not args.no_thumbs:
+            view = thumbs.ShapeView(vox_coords, size=args.thumb_px)
+            for name, mask in (("geom", None), ("gt", gt_e_np)):
+                p = os.path.join(img_dir, f"{sid}_{name}.png")
+                if not os.path.exists(p):
+                    thumbs.save_png(view.render(mask), p)
 
         base_seed = args.seed * 1000003 + (int(sid[:8], 16) % 100000)
         ious, fracs, seeds = [], [], []
@@ -239,8 +260,9 @@ def main():
             union = (pe | gt_e).sum().item()
             ious.append(inter / union if union > 0 else 1.0)
             fracs.append(float(pe.float().mean().item()))
-            thumbs.save_png(view.render(pe.cpu().numpy()),
-                            os.path.join(step_img_dir, f"{sid}_d{k}.png"))
+            if view is not None:
+                thumbs.save_png(view.render(pe.cpu().numpy()),
+                                os.path.join(step_img_dir, f"{sid}_d{k}.png"))
 
         per_shape.append({
             "sid": sid, "status": "ok",
@@ -259,6 +281,7 @@ def main():
     scored = [s for s in per_shape if s["status"] == "ok"]
     record = {
         "step": args.step,
+        "tier": args.tier,
         "val_loss": args.val_loss,
         "status": "ok" if scored else "failed",
         "ckpt_name": os.path.basename(args.lightning_ckpt),
@@ -275,9 +298,10 @@ def main():
         "elapsed_s": time.time() - t_start,
         "per_shape": per_shape,
     }
-    atomic_write_json(record, os.path.join(rec_dir, f"step{args.step:07d}.json"))
-    print(f"[live_eval] step {args.step}: mean IoU {record['mean_iou']} over {len(scored)} shapes, "
-          f"{record['elapsed_s']:.0f}s", flush=True)
+    suffix = "" if args.tier == "quick" else f"_{args.tier}"
+    atomic_write_json(record, os.path.join(rec_dir, f"step{args.step:07d}{suffix}.json"))
+    print(f"[live_eval] step {args.step} ({args.tier}): mean IoU {record['mean_iou']} over "
+          f"{len(scored)} shapes, {record['elapsed_s']:.0f}s", flush=True)
 
     if not args.keep_ckpt and scored:
         try:
