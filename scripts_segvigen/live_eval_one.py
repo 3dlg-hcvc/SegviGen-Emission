@@ -149,6 +149,13 @@ def main():
                     help="cap the shape list to this many from the top; 0, the default, means "
                          "score all of them")
     ap.add_argument("--no_thumbs", action="store_true", help="score without painting anything")
+    ap.add_argument("--cond_override", default=None,
+                    help="use this one conditioning tensor for EVERY shape instead of the "
+                         "shape's own. This is how the conditioning ablation replaces the image "
+                         "condition; nothing else about the run changes, seeds included, so a "
+                         "paired comparison against a normal run isolates the conditioning")
+    ap.add_argument("--arm", default=None,
+                    help="a label recorded in the result, for an ablation's bookkeeping")
     ap.add_argument("--draws", type=int, default=5)
     ap.add_argument("--steps", type=int, default=12, help="sampler steps per draw")
     ap.add_argument("--seed", type=int, default=0)
@@ -185,6 +192,16 @@ def main():
     # Stride, not blocks: consecutive shapes differ wildly in voxel count, so a
     # block split hands one shard all the big ones. A stride spreads them.
     sids = sids_all if args.shard is None else sids_all[args.shard::args.n_shards]
+
+    cond_override = None
+    if args.cond_override:
+        obj = torch.load(args.cond_override, map_location=device, weights_only=False)
+        cond_override = (obj["cond"] if isinstance(obj, dict) and "cond" in obj else obj).float()
+        cond_override = cond_override.squeeze(0) if cond_override.dim() == 3 else cond_override
+        cond_override = cond_override.unsqueeze(0)
+        print(f"[live_eval] conditioning OVERRIDDEN for every shape from {args.cond_override}: "
+              f"shape {tuple(cond_override.shape)}, absmax "
+              f"{cond_override.abs().max().item():.4f}", flush=True)
 
     wall = set()
     if args.wall_sids_file and not args.no_thumbs:
@@ -241,6 +258,11 @@ def main():
         emit_p = os.path.join(EMISSION_NPZ_DIR, f"{sid}.npz")
         missing_inputs = [p for p in (shp_p, pbr_p, emit_p) if not os.path.exists(p)]
         cond, cond_src = load_cond(sid, device)
+        if cond_override is not None and cond is not None:
+            # The shape's own conditioning is still REQUIRED to load: a shape that
+            # would be dropped from the normal arm must be dropped from this one
+            # too, or the two arms would score different sets.
+            cond = cond_override
         if missing_inputs or cond is None:
             why = ("missing " + ", ".join(os.path.basename(os.path.dirname(p)) for p in missing_inputs)
                    if missing_inputs else "no conditioning file")
@@ -316,6 +338,8 @@ def main():
     scored = [s for s in per_shape if s["status"] == "ok"]
     record = {
         "step": args.step,
+        "arm": args.arm,
+        "cond_override": args.cond_override,
         "shard": args.shard,
         "n_shards": args.n_shards,
         "val_loss": args.val_loss,

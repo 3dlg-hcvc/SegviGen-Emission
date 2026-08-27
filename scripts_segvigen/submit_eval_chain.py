@@ -42,13 +42,15 @@ def sbatch(args, script, env_export, dependency=None, extra=()):
 
 
 def submit_chain(ckpt, step, store=DEFAULT_STORE, n_shards=8, val_loss=None,
-                 backfilled=False, draws=5, quiet=False, only_shards=None):
+                 backfilled=False, draws=5, quiet=False, only_shards=None,
+                 job_name=None, bridged_path=None, extra_args=""):
     """only_shards: re-run just these shard indices and merge again. This is the
     repair path for a checkpoint that lost a shard, which happens on a shared
     partition when another user's job preempts one; the merge keeps the shards
     that did land, so only the gap has to be recomputed."""
-    bridged = os.path.join(store, "bridged", f"step{step:07d}.pt")
+    bridged = bridged_path or os.path.join(store, "bridged", f"step{step:07d}.pt")
     started = time.time()
+    jn = (["-J", job_name] if job_name else [])
     array_spec = (",".join(str(k) for k in sorted(only_shards)) if only_shards
                   else f"0-{n_shards - 1}")
     common = (f"LIVE_EVAL_STEP={step},LIVE_EVAL_STORE={store},"
@@ -57,12 +59,14 @@ def submit_chain(ckpt, step, store=DEFAULT_STORE, n_shards=8, val_loss=None,
     bridge_id = None
     if not (only_shards and os.path.exists(bridged)):
         bridge_id = sbatch(None, "live_eval_bridge.sbatch",
-                           f"{common},LIGHTNING_CKPT={ckpt}")
+                           f"{common},LIGHTNING_CKPT={ckpt}",
+                           extra=jn and ["-J", f"{job_name}_bridge"] or [])
     # No dependency on the bridge: the shard script polls for the bridged file
     # instead (see live_eval_shard.sbatch for why that was kept).
     array_id = sbatch(None, "live_eval_shard.sbatch",
-                      f"{common},BRIDGED_CKPT={bridged},LIVE_EVAL_EXTRA=--draws {draws}",
-                      extra=[f"--array={array_spec}"])
+                      f"{common},BRIDGED_CKPT={bridged},"
+                      f"LIVE_EVAL_EXTRA=--draws {draws} {extra_args}".strip(),
+                      extra=[f"--array={array_spec}"] + (jn and ["-J", f"{job_name}_shard"] or []))
     merge_extra = "--backfilled" if backfilled else ""
     if only_shards:
         # Keep the shards already on disk; this run only fills the gap.
@@ -71,7 +75,8 @@ def submit_chain(ckpt, step, store=DEFAULT_STORE, n_shards=8, val_loss=None,
                       f"{common},LIVE_EVAL_ARRAY_JOB={array_id},"
                       f"LIVE_EVAL_STARTED_AT={started:.0f},"
                       f"LIVE_EVAL_MERGE_EXTRA={merge_extra}",
-                      dependency=f"afterany:{array_id}")
+                      dependency=f"afterany:{array_id}",
+                      extra=jn and ["-J", f"{job_name}_merge"] or [])
     # A CLAIM on this checkpoint, so any other submitter (the driver, a one-off
     # backlog drain, a person) can see it is already being evaluated and does not
     # queue a second array for the same weights. The claim names the jobs, so a
