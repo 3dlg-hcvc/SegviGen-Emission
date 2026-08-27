@@ -27,20 +27,27 @@ is about 600GB a day of accumulation, deliberate and owner-endorsed (the
 per-epoch history is worth having and can be pruned later). Nothing here ever
 deletes a snapshot.
 
-TWO TIERS OF EVALUATION:
-  quick     ten shapes, five draws, every epoch. About two minutes. This is a
-            screen, not a selection criterion: on ten shapes the spread between
-            shapes swamps the difference between neighbouring checkpoints.
-  full_val  the whole validation split, five draws, every fifth epoch and on
-            demand. About seventy minutes. This is what checkpoint selection is
-            judged on.
-Only one evaluation runs at a time. A full run takes the slot and the quick
-screens queue behind it; the driver then works through that backlog oldest
-first rather than skipping it, so the curve does not go blank for an hour.
+WHAT EVERY EPOCH GETS (owner decision, 2026-08-26): the whole validation split,
+387 shapes, five draws each, sharded eight ways. There is no cheaper screening
+tier any more. Ten shapes could not separate neighbouring epochs, and a curve
+built on them would move with which ten shapes were drawn rather than with the
+weights; the ten shapes survive only as the visualisation wall, where panels are
+painted, and their IoU decides nothing.
 
-Asking for a full run by hand: write a step number, or the word latest, into
-<store>/request_fullval.txt. The driver picks it up on its next cycle and
-renames the file once it has acted on it.
+The eight shards are an ARRAY of independent single-GPU tasks, never one job
+asking for eight cards at once: a job wanting eight cards waits for eight to be
+free at the same instant, while an array starts what the pool can take now and
+the rest join as cards open, which also lets several checkpoints share the pool.
+submit_eval_chain.py builds the chain; this driver only decides what to submit.
+
+ONE CHECKPOINT AT A TIME, and its eight shards count as that one unit.
+Priority for the slot:
+  1. the NEWEST snapshot with no record at all,
+  2. otherwise the OLDEST snapshot whose record says it was skipped.
+Whenever a newer epoch arrives while older ones are still unevaluated, the
+newest wins and the rest are recorded as skipped; since every snapshot is kept
+on falas, nothing is lost, and the idle-slot backfill fills them in afterwards.
+A backfilled point is marked as such: late, not missing.
 
 Ending it: write a file named STOP in the store directory. The driver finishes
 its current cycle, exits, and its sbatch wrapper does not chain a successor.
@@ -69,7 +76,8 @@ DEFAULT_STORE = "/3dlg-falas/project/omages/lightgen/segvigen_emissive/outputs/l
 DEFAULT_MIRROR = ("/3dlg-falas/project/omages/lightgen/segvigen_emissive/outputs/"
                   "segvigen_256_bw_6gpu_ckpts_mirror")
 VAL_DIR = "/3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct/val_72k"
-EVAL_SBATCH = os.path.join(PROBE, "live_eval_one.sbatch")
+sys.path.insert(0, HERE)
+from submit_eval_chain import submit_chain   # noqa: E402
 STEPS_PER_EPOCH = 755          # verified: the run's last pointer read 4530 at epoch 6
 
 # The training node's host key changed at some point and the stale known_hosts
@@ -172,7 +180,7 @@ def snapshot(src_name, step, mirror):
 
 # ------------------------------------------------------------- store
 DEFAULT_STATE = {"last_seen": {}, "processed": {}, "inflight": None, "cycles": 0,
-                 "last_snapshot_step": None}
+                 "last_snapshot_step": None, "attempts": {}}
 
 
 def load_state(path):
@@ -200,17 +208,34 @@ def save_json(obj, path):
     os.replace(tmp, path)
 
 
-def record_path(rec_dir, step, tier):
-    suffix = "" if tier == "quick" else f"_{tier}"
-    return os.path.join(rec_dir, f"step{step:07d}{suffix}.json")
+def record_path(rec_dir, step, tier=None):
+    """One record per checkpoint. `tier` is accepted and ignored so older
+    callers (the one-off backlog drain script) keep working."""
+    return os.path.join(rec_dir, f"step{step:07d}.json")
 
 
-def write_skip_record(rec_dir, step, tier, reason, val_loss=None):
-    path = record_path(rec_dir, step, tier)
+def record_status(rec_dir, step):
+    """'ok', 'skipped', 'failed', or None when the checkpoint has no record."""
+    path = record_path(rec_dir, step)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as f:
+            return json.load(f).get("status", "ok")
+    except (ValueError, OSError):
+        return None
+
+
+def write_skip_record(rec_dir, step, tier_or_reason, reason=None, val_loss=None):
+    """Record that an epoch was passed over. The snapshot itself is kept, so this
+    is a note to the idle-slot backfill, not a loss."""
+    if reason is None:
+        reason = tier_or_reason
+    path = record_path(rec_dir, step)
     if os.path.exists(path):
         return
-    save_json({"step": step, "tier": tier, "status": "skipped", "reason": reason,
-               "val_loss": val_loss, "evaluated_at": time.strftime("%Y-%m-%d %H:%M:%S")}, path)
+    save_json({"step": step, "status": "skipped", "reason": reason, "val_loss": val_loss,
+               "evaluated_at": time.strftime("%Y-%m-%d %H:%M:%S")}, path)
 
 
 def mirror_snapshots(mirror):
@@ -248,60 +273,37 @@ def update_best_markers(store, entries):
     return markers
 
 
+def live_claims(store):
+    """Steps another submitter has already queued and that SLURM still knows
+    about. Claims whose jobs are gone are cleared, so a crashed submitter cannot
+    block a checkpoint forever."""
+    claim_dir = os.path.join(store, "inflight")
+    if not os.path.isdir(claim_dir):
+        return set()
+    live = set()
+    for name in sorted(os.listdir(claim_dir)):
+        if not name.startswith("step") or not name.endswith(".json"):
+            continue
+        path = os.path.join(claim_dir, name)
+        try:
+            c = json.load(open(path))
+        except (ValueError, OSError):
+            continue
+        if job_active(c.get("array")) or job_active(c.get("merge")):
+            live.add(int(c["step"]))
+        else:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    return live
+
+
 def job_active(job_id):
+    if not job_id:
+        return False
     rc, out, _ = run(["squeue", "-h", "-j", str(job_id), "-o", "%T"], timeout=60)
     return rc == 0 and out.strip() != ""
-
-
-def submit_eval(ckpt_path, step, tier, val_loss, store, args):
-    if tier == "full_val":
-        extra = (f"--tier full_val --sids_dir {VAL_DIR} --n 0 --no_thumbs "
-                 f"--draws {args.draws} --keep_ckpt")
-        sb = ["--time", args.full_time, "-J", "live_eval_full"]
-    else:
-        extra = f"--tier quick --n {args.quick_n} --draws {args.draws} --keep_ckpt"
-        sb = []
-    export = (f"ALL,LIGHTNING_CKPT={ckpt_path},LIVE_EVAL_STEP={step},"
-              f"LIVE_EVAL_VAL_LOSS={val_loss},LIVE_EVAL_STORE={store},"
-              f"LIVE_EVAL_EXTRA={extra}")
-    rc, out, err = run(["sbatch", "--parsable", f"--export={export}"] + sb + [EVAL_SBATCH],
-                       timeout=120)
-    if rc != 0:
-        log(f"sbatch FAILED (rc={rc}): {err[:300]}")
-        return None
-    job_id = out.split(";")[0].strip()
-    log(f"submitted {tier} evaluation job {job_id} for step {step} (epoch {epoch_of(step)})")
-    return job_id
-
-
-def read_fullval_request(store, snapshots):
-    """A step the operator asked for by hand, or None. The request file is
-    renamed once acted on, so the same ask never fires twice."""
-    path = os.path.join(store, "request_fullval.txt")
-    if not os.path.exists(path):
-        return None
-    try:
-        body = open(path).read().strip()
-    except OSError:
-        return None
-    step = None
-    if body.lower() in ("latest", "last", ""):
-        step = max(snapshots) if snapshots else None
-    else:
-        try:
-            step = int(body.split()[0])
-        except (ValueError, IndexError):
-            log(f"request_fullval.txt says {body[:40]!r}, which is neither a step number "
-                "nor the word latest; ignoring it")
-    os.replace(path, path + f".done.{time.strftime('%Y%m%d_%H%M%S')}")
-    if step is None:
-        return None
-    if step not in snapshots:
-        log(f"a full run was asked for at step {step} but the mirror holds no checkpoint "
-            f"for it; the steps it does hold are {sorted(snapshots)[-6:]}")
-        return None
-    log(f"a full run was asked for by hand at step {step}")
-    return step
 
 
 def main():
@@ -313,15 +315,12 @@ def main():
     ap.add_argument("--poll_s", type=int, default=180)
     ap.add_argument("--settle_s", type=int, default=90,
                     help="the last pointer must be this old before it is read and copied")
-    ap.add_argument("--catch_up", type=int, default=6,
-                    help="work through a quick-screen backlog up to this many epochs oldest "
-                         "first; beyond it, jump to the newest and record the rest as skipped. "
-                         "The default covers a full run's seventy minutes without losing points")
-    ap.add_argument("--full_every", type=int, default=5,
-                    help="run the full validation tier on every Nth epoch; 0 turns it off")
-    ap.add_argument("--full_time", default="3:00:00", help="walltime for a full-tier job")
-    ap.add_argument("--quick_n", type=int, default=10)
+    ap.add_argument("--n_shards", type=int, default=8,
+                    help="how many independent single-GPU tasks share one checkpoint's split")
     ap.add_argument("--draws", type=int, default=5)
+    ap.add_argument("--max_retries", type=int, default=1,
+                    help="how many times to re-run a checkpoint whose evaluation failed, "
+                         "before leaving the failure on the record")
     ap.add_argument("--max_hours", type=float, default=11.5,
                     help="exit cleanly after this long so the wrapper can chain a successor")
     ap.add_argument("--once", action="store_true", help="run a single cycle and exit")
@@ -340,7 +339,7 @@ def main():
     t_start = time.time()
     log(f"store {store}")
     log(f"mirror {mirror} (one snapshot per epoch, about 10.5GB each, kept)")
-    log(f"polling every {args.poll_s}s; full tier every {args.full_every} epochs; "
+    log(f"polling every {args.poll_s}s; {args.n_shards} shards per epoch; "
         f"giving up the job after {args.max_hours}h")
 
     while True:
@@ -359,21 +358,23 @@ def main():
         # is gone for good. Only SUBMISSION is one-at-a-time, and that is gated
         # further down, after the snapshots are taken.
         inflight = state.get("inflight")
-        if inflight and job_active(inflight["job"]):
-            log(f"{inflight['tier']} job {inflight['job']} (step {inflight['step']}) "
-                "still running; still watching for new epochs")
+        if inflight and (job_active(inflight["array"]) or job_active(inflight["merge"])):
+            log(f"step {inflight['step']}: {inflight['n_shards']} shards "
+                f"(array {inflight['array']}) still in flight; still watching for new epochs")
         elif inflight:
-            step, tier = inflight["step"], inflight["tier"]
-            done = os.path.exists(record_path(rec_dir, step, tier))
-            state["processed"][f"{tier}:{step}"] = {
-                "status": "done" if done else "failed", "job": inflight["job"],
+            step = inflight["step"]
+            status = record_status(rec_dir, step)
+            state["processed"][str(step)] = {
+                "status": status or "failed", "array": inflight["array"],
                 "finished_at": time.strftime("%Y-%m-%d %H:%M:%S")}
-            if not done:
-                write_skip_record(rec_dir, step, tier,
-                                  f"the {tier} job {inflight['job']} ended without writing a result")
-                log(f"{tier} job {inflight['job']} (step {step}) ended with no result")
+            if status is None:
+                write_skip_record(rec_dir, step,
+                                  f"the evaluation of this epoch (array {inflight['array']}) "
+                                  "ended without writing a record")
+                log(f"step {step}: the evaluation ended with no record; it will be retried "
+                    "when the slot is idle")
             else:
-                log(f"{tier} job {inflight['job']} (step {step}) finished")
+                log(f"step {step}: evaluation finished, recorded as {status}")
             state["inflight"] = None
             save_json(state, state_path)
 
@@ -411,7 +412,7 @@ def main():
                         missed = range(prev_step + STEPS_PER_EPOCH, step, STEPS_PER_EPOCH)
                         for ms in missed:
                             if ms not in snapshots:
-                                write_skip_record(rec_dir, ms, "quick",
+                                write_skip_record(rec_dir, ms,
                                                   "the loop was not watching when this epoch was "
                                                   "written, and the run keeps no file for it")
                     if args.no_submit:
@@ -439,7 +440,10 @@ def main():
                     snapshots[st] = p
                 break                          # at most one extra copy per cycle
 
-        # ---- 5. decide what to run, one job at a time
+        # ---- 5. decide what to run. One CHECKPOINT at a time; its shards count
+        # as that one unit. Newest unevaluated epoch first, so the leading edge of
+        # the curve is always current; everything it jumps over is recorded as
+        # skipped and filled in later, because every snapshot is kept.
         if state.get("inflight"):
             save_json(state, state_path)
             if args.once:
@@ -447,48 +451,39 @@ def main():
             time.sleep(args.poll_s)
             continue
 
-        def outstanding(tier, steps):
-            return [s for s in sorted(steps)
-                    if f"{tier}:{s}" not in state["processed"]
-                    and not os.path.exists(record_path(rec_dir, s, tier))]
+        claimed = live_claims(store)
+        if claimed:
+            log(f"already being evaluated by another submitter: {sorted(claimed)}")
+        statuses = {st: record_status(rec_dir, st) for st in snapshots}
+        statuses = {st: v for st, v in statuses.items() if st not in claimed}
+        never = sorted(st for st, v in statuses.items() if v is None)
+        retryable = sorted(st for st, v in statuses.items() if v in ("skipped", "failed"))
+        retryable = [st for st in retryable
+                     if state.get("attempts", {}).get(str(st), 0) <= args.max_retries]
 
-        pending_quick = outstanding("quick", snapshots)
-        full_steps = ([s for s in snapshots
-                       if args.full_every and epoch_of(s) >= 1 and epoch_of(s) % args.full_every == 0]
-                      if args.full_every else [])
-        pending_full = outstanding("full_val", full_steps)
-        requested = read_fullval_request(store, snapshots)
-
-        choice = None
-        if requested is not None and not os.path.exists(record_path(rec_dir, requested, "full_val")):
-            choice = ("full_val", requested)
-        elif pending_full:
-            # Only the newest scheduled full run is worth an hour of the queue; older
-            # ones are recorded as passed over rather than silently dropped.
-            for s in pending_full[:-1]:
-                write_skip_record(rec_dir, s, "full_val",
-                                  f"a newer epoch (step {pending_full[-1]}) was already due "
-                                  "for a full run when this one came up")
-                state["processed"][f"full_val:{s}"] = {"status": "skipped", "job": None}
-            choice = ("full_val", pending_full[-1])
-        elif pending_quick:
-            if len(pending_quick) > args.catch_up:
-                for s in pending_quick[:-1]:
-                    write_skip_record(rec_dir, s, "quick",
-                                      f"a newer epoch (step {pending_quick[-1]}) was already "
-                                      "waiting when this one came up")
-                    state["processed"][f"quick:{s}"] = {"status": "skipped", "job": None}
-                log(f"{len(pending_quick)} epochs waiting, more than the {args.catch_up} this "
-                    f"loop works through in order; jumping to step {pending_quick[-1]}")
-                pending_quick = pending_quick[-1:]
-            choice = ("quick", pending_quick[0])
+        choice, backfilled = None, False
+        if never:
+            newest = never[-1]
+            for st in never[:-1]:
+                write_skip_record(rec_dir, st,
+                                  f"a newer epoch (step {newest}) arrived before this one "
+                                  "reached the front of the queue; it is kept on disk and "
+                                  "will be filled in when the slot is idle")
+                log(f"step {st} passed over in favour of step {newest}; queued for backfill")
+            choice = newest
+        elif retryable:
+            # Idle slot: fill in the oldest epoch that was passed over, so the
+            # curve becomes complete rather than permanently gapped.
+            choice = retryable[0]
+            backfilled = True
 
         if choice is None:
-            log(f"nothing to run ({len(snapshots)} epoch(s) in the mirror, all accounted for)")
+            log(f"nothing to run ({len(snapshots)} epoch(s) in the mirror, "
+                f"{len(claimed)} in flight elsewhere, the rest evaluated)")
         elif args.no_submit:
-            log(f"would run a {choice[0]} evaluation on step {choice[1]} (submission is off)")
+            log(f"would evaluate step {choice} across {args.n_shards} shards"
+                + (" (backfill)" if backfilled else "") + " (submission is off)")
         else:
-            tier, step = choice
             markers = {}
             mpath = os.path.join(store, "best_markers.json")
             if os.path.exists(mpath):
@@ -496,12 +491,30 @@ def main():
                     markers = json.load(open(mpath))
                 except ValueError:
                     markers = {}
-            val_loss = markers.get(str(step), {}).get("val_loss")
-            job_id = submit_eval(snapshots[step], step, tier, val_loss, store, args)
-            if job_id:
-                state["inflight"] = {"job": job_id, "step": step, "tier": tier,
-                                     "path": snapshots[step],
+            val_loss = markers.get(str(choice), {}).get("val_loss")
+            if backfilled:
+                # Clear the skip note so the merge writes the real record in its place.
+                try:
+                    os.remove(record_path(rec_dir, choice))
+                except OSError:
+                    pass
+            try:
+                r = submit_chain(snapshots[choice], choice, store=store,
+                                 n_shards=args.n_shards, val_loss=val_loss,
+                                 backfilled=backfilled, draws=args.draws, quiet=True)
+            except SystemExit as e:
+                log(f"could not submit step {choice}: {e}")
+                r = None
+            if r:
+                state.setdefault("attempts", {})
+                state["attempts"][str(choice)] = state["attempts"].get(str(choice), 0) + 1
+                state["inflight"] = {"step": choice, "array": r["array"], "merge": r["merge"],
+                                     "bridge": r["bridge"], "n_shards": args.n_shards,
+                                     "backfilled": backfilled,
                                      "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+                log(f"step {choice} (epoch {epoch_of(choice)}): submitted "
+                    f"{args.n_shards} shards as array {r['array']}, merge {r['merge']}"
+                    + (" [backfill]" if backfilled else ""))
 
         save_json(state, state_path)
         if args.once:

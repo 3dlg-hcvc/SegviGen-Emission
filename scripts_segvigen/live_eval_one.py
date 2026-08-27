@@ -119,22 +119,36 @@ def atomic_write_json(obj, path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--lightning_ckpt", required=True)
+    ap.add_argument("--lightning_ckpt", default=None,
+                    help="a lightning checkpoint, bridged in this process")
+    ap.add_argument("--bridged_ckpt", default=None,
+                    help="a checkpoint ALREADY bridged into the standalone format by "
+                         "unrekey_for_eval.py. The sharded lane uses this: bridging once in a "
+                         "cheap job and letting eight shards read a 2.6GB file beats eight "
+                         "shards each reading and unpickling the same 10.5GB lightning file")
     ap.add_argument("--step", type=int, required=True, help="optimizer step, from the filename")
     ap.add_argument("--val_loss", type=float, default=None, help="val loss, from the filename")
     ap.add_argument("--store", required=True, help="live_eval store root on falas")
+    ap.add_argument("--out", default=None,
+                    help="where to write this process's result json; the merge step names shard "
+                         "files, so the default record path is only used for an unsharded run")
+    ap.add_argument("--shard", type=int, default=None,
+                    help="this task's index; it scores every n_shards-th shape")
+    ap.add_argument("--n_shards", type=int, default=1)
+    ap.add_argument("--wall_sids_file", default=None,
+                    help="paint panels ONLY for the shapes listed here (the visualization wall). "
+                         "Painting all 387 would cost two thousand files an epoch for shapes "
+                         "nobody looks at")
+    ap.add_argument("--wall_n", type=int, default=10,
+                    help="how many of the wall list to use, from the top")
     ap.add_argument("--sids_file", default=DEFAULT_SIDS_FILE)
     ap.add_argument("--sids_dir", default=None,
                     help="score every shape in this directory instead of --sids_file; this is "
                          "how the full validation tier is pointed at val_72k")
-    ap.add_argument("--n", type=int, default=10,
-                    help="how many shapes, taken from the top of the list; 0 means all of them")
-    ap.add_argument("--tier", default="quick", choices=["quick", "full_val"],
-                    help="quick: the ten-shape screen that runs on every epoch. full_val: the "
-                         "whole validation split, which is what checkpoint selection is judged on")
-    ap.add_argument("--no_thumbs", action="store_true",
-                    help="score without painting panels; the full tier uses this, since two "
-                         "thousand panels per checkpoint would swamp the page and the disk")
+    ap.add_argument("--n", type=int, default=0,
+                    help="cap the shape list to this many from the top; 0, the default, means "
+                         "score all of them")
+    ap.add_argument("--no_thumbs", action="store_true", help="score without painting anything")
     ap.add_argument("--draws", type=int, default=5)
     ap.add_argument("--steps", type=int, default=12, help="sampler steps per draw")
     ap.add_argument("--seed", type=int, default=0)
@@ -146,6 +160,8 @@ def main():
                          "of that epoch, because the training run overwrites its own last "
                          "pointer and keeps no per-epoch file of its own")
     args = ap.parse_args()
+    if not (args.lightning_ckpt or args.bridged_ckpt):
+        ap.error("pass either --lightning_ckpt or --bridged_ckpt")
     device = "cuda"
 
     store = args.store
@@ -163,17 +179,35 @@ def main():
     else:
         sids_all = [l.strip() for l in open(args.sids_file) if l.strip()]
         source = args.sids_file
-    sids = sids_all if args.n <= 0 else sids_all[: args.n]
-    print(f"[live_eval] checkpoint step {args.step}, tier {args.tier}, {len(sids)} shapes "
+    if args.n > 0:
+        sids_all = sids_all[: args.n]
+    n_total = len(sids_all)
+    # Stride, not blocks: consecutive shapes differ wildly in voxel count, so a
+    # block split hands one shard all the big ones. A stride spreads them.
+    sids = sids_all if args.shard is None else sids_all[args.shard::args.n_shards]
+
+    wall = set()
+    if args.wall_sids_file and not args.no_thumbs:
+        wall = set([l.strip() for l in open(args.wall_sids_file) if l.strip()][: args.wall_n])
+
+    shard_label = "" if args.shard is None else f", shard {args.shard} of {args.n_shards}"
+    print(f"[live_eval] checkpoint step {args.step}{shard_label}, {len(sids)} of {n_total} shapes "
           f"x {args.draws} draws, from {source}", flush=True)
+    if wall:
+        mine = [s for s in sids if s in wall]
+        print(f"[live_eval] painting panels for {len(mine)} wall shape(s) in this shard", flush=True)
 
     t_start = time.time()
-    # The bridged denoiser is a 2.6GB intermediate that only this process reads.
-    # It goes on the node's own disk, never on falas: a write-then-read of it
-    # over NFS costs minutes per checkpoint and this loop runs every 25 minutes.
-    scratch = os.environ.get("SLURM_TMPDIR") or "/tmp"
-    bridged = os.path.join(scratch, f"live_eval_bridged_step{args.step:07d}.pt")
-    unrekey(args.lightning_ckpt, bridged, ema_rate=args.ema)
+    if args.bridged_ckpt:
+        bridged, bridged_is_ours = args.bridged_ckpt, False
+    else:
+        # The bridged denoiser is a 2.6GB intermediate that only this process
+        # reads. It goes on the node's own disk, never on falas: a write-then-
+        # read of it over NFS costs minutes, and this loop runs every 25 minutes.
+        scratch = os.environ.get("SLURM_TMPDIR") or "/tmp"
+        bridged = os.path.join(scratch, f"live_eval_bridged_step{args.step:07d}.pt")
+        unrekey(args.lightning_ckpt, bridged, ema_rate=args.ema)
+        bridged_is_ours = True
 
     flow = models.from_pretrained(
         "microsoft/TRELLIS.2-4B/ckpts/slat_flow_imgshape2tex_dit_1_3B_512_bf16")
@@ -188,7 +222,8 @@ def main():
         raise SystemExit(f"[live_eval] REFUSING to score: state dict did not load cleanly "
                          f"({len(missing)} missing, {len(unexpected)} unexpected)")
     gen.eval()
-    os.remove(bridged)
+    if bridged_is_ours:
+        os.remove(bridged)
 
     md = load_eval_models(device)
     tex_decoder, shape_decoder, sampler = md["tex_decoder"], md["shape_decoder"], md["sampler"]
@@ -237,7 +272,7 @@ def main():
         # every checkpoint that ever evaluates it, so cells stay comparable and
         # seven panels cost barely more than one.
         view = None
-        if not args.no_thumbs:
+        if not args.no_thumbs and (not wall or sid in wall):
             view = thumbs.ShapeView(vox_coords, size=args.thumb_px)
             for name, mask in (("geom", None), ("gt", gt_e_np)):
                 p = os.path.join(img_dir, f"{sid}_{name}.png")
@@ -281,15 +316,17 @@ def main():
     scored = [s for s in per_shape if s["status"] == "ok"]
     record = {
         "step": args.step,
-        "tier": args.tier,
+        "shard": args.shard,
+        "n_shards": args.n_shards,
         "val_loss": args.val_loss,
         "status": "ok" if scored else "failed",
-        "ckpt_name": os.path.basename(args.lightning_ckpt),
+        "ckpt_name": os.path.basename(args.lightning_ckpt or args.bridged_ckpt),
         "evaluated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "slurm_job": os.environ.get("SLURM_JOB_ID"),
         "node": os.environ.get("SLURMD_NODENAME"),
         "ema": args.ema,
-        "n_shapes": len(sids), "n_scored": len(scored), "draws": args.draws,
+        "n_shapes": len(sids), "n_shapes_total": n_total,
+        "n_scored": len(scored), "draws": args.draws,
         "sampler_steps": args.steps, "threshold": THR, "resolution": RESOLUTION,
         "mean_iou": float(np.mean([s["iou_mean"] for s in scored])) if scored else None,
         "mean_pred_frac": float(np.mean([s["pred_frac_mean"] for s in scored])) if scored else None,
@@ -298,12 +335,13 @@ def main():
         "elapsed_s": time.time() - t_start,
         "per_shape": per_shape,
     }
-    suffix = "" if args.tier == "quick" else f"_{args.tier}"
-    atomic_write_json(record, os.path.join(rec_dir, f"step{args.step:07d}{suffix}.json"))
-    print(f"[live_eval] step {args.step} ({args.tier}): mean IoU {record['mean_iou']} over "
-          f"{len(scored)} shapes, {record['elapsed_s']:.0f}s", flush=True)
+    out_path = args.out or os.path.join(rec_dir, f"step{args.step:07d}.json")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    atomic_write_json(record, out_path)
+    print(f"[live_eval] step {args.step}{shard_label}: mean IoU {record['mean_iou']} over "
+          f"{len(scored)} shapes, {record['elapsed_s']:.0f}s -> {out_path}", flush=True)
 
-    if not args.keep_ckpt and scored:
+    if not args.keep_ckpt and scored and args.lightning_ckpt:
         try:
             os.remove(args.lightning_ckpt)
             print(f"[live_eval] removed the staged checkpoint {args.lightning_ckpt}", flush=True)
