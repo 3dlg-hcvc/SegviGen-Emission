@@ -22,11 +22,11 @@ ATTN_BACKEND=sdpa + SPARSE_ATTN_BACKEND=xformers (venus-19-proven)".
 **Our confirmation (venus-05, job 257555):** `flash_attn` import fails
 with `ModuleNotFoundError`, as expected. A standalone `xformers.ops.
 memory_efficient_attention` unit test with **float32** inputs also failed
-(`capability (12, 0) too new` for the fp32 fallback kernels — the fa2/fa3
+(`capability (12, 0) too new` for the fp32 fallback kernels -- the fa2/fa3
 xformers kernels only support bf16/fp16 on this card). That failure is a
 property of the isolated test, not of real training: training runs under
 `mix_precision_mode: amp, mix_precision_dtype: bfloat16`, and under that
-autocast xformers works correctly — confirmed by 30-step (job 257857) and
+autocast xformers works correctly -- confirmed by 30-step (job 257857) and
 270+-step (job 257933, still running as of this writing) real training
 runs with healthy, non-NaN losses. **Lesson for anyone smoke-testing
 xformers standalone on sm_120: test with bf16/fp16 tensors, not fp32, or
@@ -44,7 +44,7 @@ on a shared filesystem. Set `FLEX_GEMM_USE_AUTOTUNE_CACHE=0` and
 
 **Fact:** Lightning's SLURM-coordinated launcher errors (`ntasks=1` vs.
 `devices=N` mismatch) under the star2 single-Slurm-task convention (one
-task, `--num_gpus N` native-spawns Lightning's own N processes — NOT
+task, `--num_gpus N` native-spawns Lightning's own N processes -- NOT
 `--ntasks-per-node=<gpus>`). Set `SLURM_JOB_NAME=bash` to make Lightning's
 SLURM-environment detection back off and let native spawn happen.
 
@@ -114,14 +114,30 @@ missing"), reproduced in `script/bw/bootstrap_segvigen_bw.sh`.
 from the compute node.
 
 **Our confirmation (venus-05, job 257491):** the node already had a
-working SSH deploy key/agent for the QhelDIV GitHub account —
+working SSH deploy key/agent for the QhelDIV GitHub account --
 `git clone git@github.com:QhelDIV/segvigen-lightning.git` succeeded with
 no extra setup. This had been flagged as an open question before the
 bootstrap was actually run; it is resolved, not still open.
+
+## Conditioning tensor dtype (relevant when re-staging)
+
+Not an sm_120 fact, but it bites anyone staging this lane onto a node:
+store the precomputed DINOv3 `cond_pos.pth` as **bfloat16**, not fp32 or
+fp16. The trainer runs `mix_precision_dtype: bfloat16`, so autocast casts
+cond to bf16 inside every forward anyway, which makes bf16 storage
+bit-identical to fp32 at half the bytes (measured: cosine 1.00000000 and
+loss delta exactly 0.0 across 20 shapes, job 258059).
+`scripts_segvigen/convert_cond_fp16.py` now defaults to bf16.
+
+The set currently staged on venus-05 is **fp16**, written before that
+measurement existed; the owner ruled to keep it (measured effect 0.014%
+relative loss shift, roughly 1000x below minibatch gradient noise). Full
+numbers for both dtypes, and the scale context behind that call, are in
+that script's docstring. Read it before reconverting.
 
 ## What is NOT documented here
 
 Data staging (node-local disk vs. NFS, the jupiter throughput ceiling that
 motivated moving the 256 lane's data local) is a separate, already-fixed
-problem — see `script/bw/stage_data_256_local.sh` and its header comment,
+problem -- see `script/bw/stage_data_256_local.sh` and its header comment,
 not an sm_120-specific fact.
