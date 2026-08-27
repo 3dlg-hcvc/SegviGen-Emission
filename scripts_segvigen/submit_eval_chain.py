@@ -42,20 +42,31 @@ def sbatch(args, script, env_export, dependency=None, extra=()):
 
 
 def submit_chain(ckpt, step, store=DEFAULT_STORE, n_shards=8, val_loss=None,
-                 backfilled=False, draws=5, quiet=False):
+                 backfilled=False, draws=5, quiet=False, only_shards=None):
+    """only_shards: re-run just these shard indices and merge again. This is the
+    repair path for a checkpoint that lost a shard, which happens on a shared
+    partition when another user's job preempts one; the merge keeps the shards
+    that did land, so only the gap has to be recomputed."""
     bridged = os.path.join(store, "bridged", f"step{step:07d}.pt")
     started = time.time()
+    array_spec = (",".join(str(k) for k in sorted(only_shards)) if only_shards
+                  else f"0-{n_shards - 1}")
     common = (f"LIVE_EVAL_STEP={step},LIVE_EVAL_STORE={store},"
               f"LIVE_EVAL_VAL_LOSS={val_loss},LIVE_EVAL_NSHARDS={n_shards}")
 
-    bridge_id = sbatch(None, "live_eval_bridge.sbatch",
-                       f"{common},LIGHTNING_CKPT={ckpt}")
+    bridge_id = None
+    if not (only_shards and os.path.exists(bridged)):
+        bridge_id = sbatch(None, "live_eval_bridge.sbatch",
+                           f"{common},LIGHTNING_CKPT={ckpt}")
     # No dependency on the bridge: the shard script polls for the bridged file
     # instead (see live_eval_shard.sbatch for why that was kept).
     array_id = sbatch(None, "live_eval_shard.sbatch",
                       f"{common},BRIDGED_CKPT={bridged},LIVE_EVAL_EXTRA=--draws {draws}",
-                      extra=[f"--array=0-{n_shards - 1}"])
+                      extra=[f"--array={array_spec}"])
     merge_extra = "--backfilled" if backfilled else ""
+    if only_shards:
+        # Keep the shards already on disk; this run only fills the gap.
+        merge_extra = (merge_extra + " --keep_shards").strip()
     merge_id = sbatch(None, "live_eval_merge.sbatch",
                       f"{common},LIVE_EVAL_ARRAY_JOB={array_id},"
                       f"LIVE_EVAL_STARTED_AT={started:.0f},"
@@ -66,7 +77,7 @@ def submit_chain(ckpt, step, store=DEFAULT_STORE, n_shards=8, val_loss=None,
     # queue a second array for the same weights. The claim names the jobs, so a
     # reader can tell a live claim from a stale one by asking SLURM.
     claim = {"step": step, "bridge": bridge_id, "array": array_id, "merge": merge_id,
-             "n_shards": n_shards, "backfilled": backfilled,
+             "n_shards": n_shards, "backfilled": backfilled, "repair": bool(only_shards),
              "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S")}
     claim_dir = os.path.join(store, "inflight")
     os.makedirs(claim_dir, exist_ok=True)
@@ -91,9 +102,13 @@ def main():
     ap.add_argument("--draws", type=int, default=5)
     ap.add_argument("--val_loss", default=None)
     ap.add_argument("--backfilled", action="store_true")
+    ap.add_argument("--only_shards", default=None,
+                    help="comma-separated shard indices to re-run, for repairing a checkpoint "
+                         "that lost one")
     args = ap.parse_args()
+    only = ([int(x) for x in args.only_shards.split(",")] if args.only_shards else None)
     submit_chain(args.ckpt, args.step, args.store, args.n_shards, args.val_loss,
-                 args.backfilled, args.draws)
+                 args.backfilled, args.draws, only_shards=only)
 
 
 if __name__ == "__main__":

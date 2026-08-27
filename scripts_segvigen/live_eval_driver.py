@@ -180,7 +180,7 @@ def snapshot(src_name, step, mirror):
 
 # ------------------------------------------------------------- store
 DEFAULT_STATE = {"last_seen": {}, "processed": {}, "inflight": None, "cycles": 0,
-                 "last_snapshot_step": None, "attempts": {}}
+                 "last_snapshot_step": None, "attempts": {}, "repairs": {}}
 
 
 def load_state(path):
@@ -214,16 +214,29 @@ def record_path(rec_dir, step, tier=None):
     return os.path.join(rec_dir, f"step{step:07d}.json")
 
 
-def record_status(rec_dir, step):
-    """'ok', 'skipped', 'failed', or None when the checkpoint has no record."""
+def read_record(rec_dir, step):
     path = record_path(rec_dir, step)
     if not os.path.exists(path):
         return None
     try:
         with open(path) as f:
-            return json.load(f).get("status", "ok")
+            return json.load(f)
     except (ValueError, OSError):
         return None
+
+
+def record_status(rec_dir, step):
+    """'ok', 'skipped', 'failed', or None when the checkpoint has no record."""
+    r = read_record(rec_dir, step)
+    return None if r is None else r.get("status", "ok")
+
+
+def missing_shards(rec_dir, step):
+    """Shard indices a checkpoint's record says never arrived. A shared
+    partition preempts a task now and then, and the merge records the gap
+    rather than averaging a smaller denominator; this is what repairs it."""
+    r = read_record(rec_dir, step)
+    return list(r.get("missing_shards") or []) if r else []
 
 
 def write_skip_record(rec_dir, step, tier_or_reason, reason=None, val_loss=None):
@@ -461,7 +474,11 @@ def main():
         retryable = [st for st in retryable
                      if state.get("attempts", {}).get(str(st), 0) <= args.max_retries]
 
-        choice, backfilled = None, False
+        incomplete = sorted(st for st in snapshots
+                            if statuses.get(st) == "ok" and missing_shards(rec_dir, st)
+                            and state.get("repairs", {}).get(str(st), 0) <= args.max_retries)
+
+        choice, backfilled, repair = None, False, None
         if never:
             newest = never[-1]
             for st in never[:-1]:
@@ -471,6 +488,11 @@ def main():
                                   "will be filled in when the slot is idle")
                 log(f"step {st} passed over in favour of step {newest}; queued for backfill")
             choice = newest
+        elif incomplete:
+            # Cheapest useful work: one checkpoint on the curve is standing on a
+            # partial split. Re-run only the shards that went missing.
+            choice = incomplete[0]
+            repair = missing_shards(rec_dir, choice)
         elif retryable:
             # Idle slot: fill in the oldest epoch that was passed over, so the
             # curve becomes complete rather than permanently gapped.
@@ -481,7 +503,9 @@ def main():
             log(f"nothing to run ({len(snapshots)} epoch(s) in the mirror, "
                 f"{len(claimed)} in flight elsewhere, the rest evaluated)")
         elif args.no_submit:
-            log(f"would evaluate step {choice} across {args.n_shards} shards"
+            what = (f"re-run shards {repair} of" if repair
+                    else f"evaluate across {args.n_shards} shards")
+            log(f"would {what} step {choice}"
                 + (" (backfill)" if backfilled else "") + " (submission is off)")
         else:
             markers = {}
@@ -501,20 +525,28 @@ def main():
             try:
                 r = submit_chain(snapshots[choice], choice, store=store,
                                  n_shards=args.n_shards, val_loss=val_loss,
-                                 backfilled=backfilled, draws=args.draws, quiet=True)
+                                 backfilled=backfilled, draws=args.draws, quiet=True,
+                                 only_shards=repair)
             except SystemExit as e:
                 log(f"could not submit step {choice}: {e}")
                 r = None
             if r:
                 state.setdefault("attempts", {})
-                state["attempts"][str(choice)] = state["attempts"].get(str(choice), 0) + 1
+                state.setdefault("repairs", {})
+                if repair:
+                    state["repairs"][str(choice)] = state["repairs"].get(str(choice), 0) + 1
+                else:
+                    state["attempts"][str(choice)] = state["attempts"].get(str(choice), 0) + 1
                 state["inflight"] = {"step": choice, "array": r["array"], "merge": r["merge"],
                                      "bridge": r["bridge"], "n_shards": args.n_shards,
                                      "backfilled": backfilled,
                                      "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S")}
-                log(f"step {choice} (epoch {epoch_of(choice)}): submitted "
-                    f"{args.n_shards} shards as array {r['array']}, merge {r['merge']}"
-                    + (" [backfill]" if backfilled else ""))
+                what = (f"re-ran shards {repair}" if repair
+                        else f"submitted {args.n_shards} shards")
+                log(f"step {choice} (epoch {epoch_of(choice)}): {what} as array "
+                    f"{r['array']}, merge {r['merge']}"
+                    + (" [backfill]" if backfilled else "")
+                    + (" [repair]" if repair else ""))
 
         save_json(state, state_path)
         if args.once:
