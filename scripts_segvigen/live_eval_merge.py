@@ -17,9 +17,16 @@ import argparse
 import glob
 import json
 import os
+import sys
 import time
 
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import live_eval_slices as slice_defs
+except ImportError:
+    slice_defs = None
 
 
 def atomic_write_json(obj, path):
@@ -124,6 +131,16 @@ def main():
         "wall_s": (time.time() - args.started_at) if args.started_at else None,
         "per_shape": per_shape,
     }
+    # The team's evaluation slices, recorded with the run so the stream is
+    # readable without re-deriving them. The page recomputes them anyway, which
+    # is what makes the change retroactive for records written before this.
+    if slice_defs is not None:
+        try:
+            record["slices"] = slice_defs.slice_stats(per_shape, slice_defs.load_defs(store))
+            crit = (record["slices"].get("agentic_clean") or {}).get("mean_iou")
+            print(f"[merge] criterion slice agentic_clean: {crit}", flush=True)
+        except (OSError, ValueError, KeyError) as e:
+            print(f"[merge] could not attach slices: {e}", flush=True)
     atomic_write_json(record, rec_path)
 
     print(f"[merge] step {args.step}: {len(shards)}/{planned} shards, {len(scored)} shapes scored "
