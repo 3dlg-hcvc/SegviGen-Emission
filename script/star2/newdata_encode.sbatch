@@ -14,7 +14,9 @@ CODE="${1:?code root}"; ROOT="${2:?latents root}"; STAGES="${3:?stages}"; RANK="
 PY="$HOME/envs/trellis2/bin/python"
 REL=/3dlg-jupiter-project/lightgen/datasets/dataset_release
 export HF_HOME=/3dlg-jupiter-project/lightgen/hf_cache HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-export FLEX_GEMM_USE_AUTOTUNE_CACHE=0 FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
+# Autotune results must be kept: with USE=0 every new tensor size is re-tuned (measured 2026-09-19: 173 s for 6
+# shapes against 6 s). AUTOSAVE=0 because several slices share ~/.flex_gemm and would race writing it.
+export FLEX_GEMM_USE_AUTOTUNE_CACHE=1 FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
 cd "$CODE"
 echo "[encode] $(date) node=$(hostname) stages=$STAGES rank=$RANK/$WORLD code=$(git rev-parse --short HEAD)"
 "$PY" -c "import torch, o_voxel; assert torch.cuda.is_available(); torch.zeros(1).cuda(); print('[encode] gpu ok:', torch.cuda.get_device_name(0))" || exit 4
