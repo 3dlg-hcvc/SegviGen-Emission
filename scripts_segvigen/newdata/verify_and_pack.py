@@ -115,19 +115,7 @@ def _pack_cond(job):
     return out
 
 
-def pack(args):
-    meta = os.path.join(args.root, "meta")
-    sids = [l.strip() for l in open(os.path.join(meta, "usable.txt")) if l.strip()]
-    tars = os.path.join(args.root, "tars")
-    os.makedirs(tars, exist_ok=True)
-    # one generation at a time: tars of an older verify (or another --cond_shards) must not sit beside
-    # the new ones, the training job unpacks every tar SHA256SUMS names
-    stale = [f for f in os.listdir(tars) if not f.startswith(".")]
-    if stale and not args.overwrite:
-        raise SystemExit(f"[pack] {tars} holds {len(stale)} files; pass --overwrite to rebuild them all")
-    for f in stale:
-        os.remove(os.path.join(tars, f))
-    lat = os.path.join(tars, "latents.tar")
+def _latents_tar(args, meta, sids, lat):
     tmp = lat + f".tmp{os.getpid()}"
     with tarfile.open(tmp, "w") as t:
         for name in ("release_index.parquet", "release_splits_usable.json", "usable.txt", "dropped.tsv"):
@@ -139,6 +127,53 @@ def pack(args):
             t.add(p_["pbr"], arcname=f"pbr_latents/{PBR_NAME}/{s_}.npz")
             t.add(p_["emit"], arcname=f"emission_npz/{s_}.npz")
     os.replace(tmp, lat)
+
+
+def pack_incremental(args):
+    """After a repair: the cond tars of the previous pack stay (78 GB that may already be on a cluster), the
+    conditioning of shapes that became usable since goes into ONE extra tar, latents.tar is rebuilt whole."""
+    meta = os.path.join(args.root, "meta")
+    tars = os.path.join(args.root, "tars")
+    sids = [l.strip() for l in open(os.path.join(meta, "usable.txt")) if l.strip()]
+    prev = {l.strip() for l in open(args.incremental_from) if l.strip()}
+    gone = prev - set(sids)
+    if gone:
+        raise SystemExit(f"[pack] {len(gone)} shapes of the previous pack are no longer usable; do a full pack")
+    new = [s for s in sids if s not in prev]
+    old_sums = {}
+    for line in open(os.path.join(tars, "SHA256SUMS")):
+        h, name = line.split()
+        old_sums[name] = h
+    _latents_tar(args, meta, sids, os.path.join(tars, "latents.tar"))
+    extra = os.path.join(tars, f"cond_extra_{len(new):05d}.tar")
+    for f in os.listdir(tars):
+        if f.startswith("cond_extra_"):
+            os.remove(os.path.join(tars, f))
+    if new:
+        _pack_cond((args.root, extra, new))
+    names = sorted(f for f in os.listdir(tars) if f.endswith(".tar"))
+    with open(os.path.join(tars, "SHA256SUMS"), "w") as f:
+        for name in names:
+            keep = name.startswith("cond_") and not name.startswith("cond_extra_") and name in old_sums
+            f.write(f"{old_sums[name] if keep else _sha256(os.path.join(tars, name))}  {name}\n")
+    print(f"[pack] incremental: {len(new)} newly usable shapes, {len(sids)} in all, {len(names)} tars -> {tars}")
+
+
+def pack(args):
+    if args.incremental_from:
+        return pack_incremental(args)
+    meta = os.path.join(args.root, "meta")
+    sids = [l.strip() for l in open(os.path.join(meta, "usable.txt")) if l.strip()]
+    tars = os.path.join(args.root, "tars")
+    os.makedirs(tars, exist_ok=True)
+    # one generation at a time: tars of an older verify (or another --cond_shards) must not sit beside
+    # the new ones, the training job unpacks every tar SHA256SUMS names
+    stale = [f for f in os.listdir(tars) if not f.startswith(".")]
+    if stale and not args.overwrite:
+        raise SystemExit(f"[pack] {tars} holds {len(stale)} files; pass --overwrite to rebuild them all")
+    for f in stale:
+        os.remove(os.path.join(tars, f))
+    _latents_tar(args, meta, sids, os.path.join(tars, "latents.tar"))
     n = args.cond_shards
     jobs = []
     for k in range(n):
@@ -162,6 +197,8 @@ def main():
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--cond_shards", type=int, default=8)
     ap.add_argument("--overwrite", action="store_true", help="pack: delete the tars already there first")
+    ap.add_argument("--incremental_from", default=None,
+                    help="pack: the usable.txt of the pack already in tars/; keeps its cond tars, see pack_incremental")
     args = ap.parse_args()
     {"verify": verify, "pack": pack}[args.cmd](args)
 
