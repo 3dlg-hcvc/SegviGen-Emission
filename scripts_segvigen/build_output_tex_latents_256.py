@@ -90,14 +90,23 @@ OUT_ROUGHNESS_U8 = 255
 OUT_ALPHA_U8 = 255
 
 
-def build_one(sid: str, tex_encoder) -> str:
-    """Returns a short status string; raises on unexpected failure."""
-    out_path = os.path.join(OUT_ROOT, f"{sid}.npz")
+def build_one(sid: str, tex_encoder, release_root: str = None, out_root: str = None) -> str:
+    """Returns a short status string; raises on unexpected failure.
+
+    release_root: read the released dataset's layout (<root>/<sid>/pbr_voxels.vxz and
+    emission_voxels.vxz, 3dlg-hcvc/LightgenBench) instead of OVOX_ROOT's per-kind folders.
+    """
+    out_root = out_root or OUT_ROOT
+    out_path = os.path.join(out_root, f"{sid}.npz")
     if os.path.exists(out_path):
         return "cached"
 
-    pbr_vxz = os.path.join(OVOX_ROOT, sid, "pbr_voxels_256", f"{sid}.vxz")
-    emis_vxz = os.path.join(OVOX_ROOT, sid, "emission_voxels_256", f"{sid}.vxz")
+    if release_root:
+        pbr_vxz = os.path.join(release_root, sid, "pbr_voxels.vxz")
+        emis_vxz = os.path.join(release_root, sid, "emission_voxels.vxz")
+    else:
+        pbr_vxz = os.path.join(OVOX_ROOT, sid, "pbr_voxels_256", f"{sid}.vxz")
+        emis_vxz = os.path.join(OVOX_ROOT, sid, "emission_voxels_256", f"{sid}.vxz")
     if not os.path.exists(pbr_vxz):
         return f"SKIP missing pbr_voxels_256: {pbr_vxz}"
     if not os.path.exists(emis_vxz):
@@ -130,7 +139,7 @@ def build_one(sid: str, tex_encoder) -> str:
     with torch.no_grad():
         tex_slat = tex_encoder(sp.SparseTensor(attr.cuda(), coords_batched))
 
-    os.makedirs(OUT_ROOT, exist_ok=True)
+    os.makedirs(out_root, exist_ok=True)
     tmp_path = out_path + f".tmp{os.getpid()}.npz"  # must end in .npz or np.savez appends it, breaking os.replace
     feats_np = tex_slat.feats.detach().cpu().numpy()
     coords_np = tex_slat.coords[:, 1:].detach().cpu().numpy()  # drop batch column, match latents_v2 (N,3)
@@ -142,15 +151,24 @@ def build_one(sid: str, tex_encoder) -> str:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--split", required=True, choices=["train_72k_agentic", "val_72k"])
+    ap.add_argument("--split", default=None, choices=["train_72k_agentic", "val_72k"])
     ap.add_argument("--rank", type=int, required=True)
     ap.add_argument("--world_size", type=int, required=True)
+    # the released dataset (2026-09): shapes from a list, voxels in the release layout
+    ap.add_argument("--sid_list", default=None, help="one shape id per line; replaces --split")
+    ap.add_argument("--release_root", default=None, help="dataset_release root; replaces OVOX_ROOT")
+    ap.add_argument("--out_root", default=None, help="replaces OUT_ROOT")
     args = ap.parse_args()
 
-    split_dir = os.path.join(DATASET_DIRECT, args.split)
-    all_ids = sorted(os.listdir(split_dir))
+    if args.sid_list:
+        all_ids = [l.strip() for l in open(args.sid_list) if l.strip()]
+        src = args.sid_list
+    else:
+        assert args.split, "pass --split or --sid_list"
+        all_ids = sorted(os.listdir(os.path.join(DATASET_DIRECT, args.split)))
+        src = args.split
     my_ids = [sid for i, sid in enumerate(all_ids) if i % args.world_size == args.rank]
-    print(f"[build256] rank {args.rank}/{args.world_size}: {len(my_ids)} of {len(all_ids)} sids in {args.split}",
+    print(f"[build256] rank {args.rank}/{args.world_size}: {len(my_ids)} of {len(all_ids)} sids in {src}",
           flush=True)
 
     # .float() forces fp32 weights to match our fp32 input feats -- the
@@ -162,7 +180,7 @@ def main():
     n_built = n_cached = n_skipped = n_error = 0
     for i, sid in enumerate(my_ids):
         try:
-            status = build_one(sid, tex_encoder)
+            status = build_one(sid, tex_encoder, args.release_root, args.out_root)
         except Exception as e:
             n_error += 1
             print(f"[build256] ERROR {sid}: {e!r}", flush=True)
