@@ -10,7 +10,8 @@
 #
 #   env: MAX_STEPS=<n> bounded probe; OUT_SUFFIX=_probe keeps a probe out of the real run's directory (its
 #        last.ckpt and wandb id would otherwise be resumed); WALLTIME=HH:MM:SS (default 24:00:00);
-#        BATCH_SIZE_PER_GPU (12), BATCH_SPLIT (1; 2 halves the activation memory at the same batch); CLUSTER=<name>
+#        BATCH_SIZE_PER_GPU (12), BATCH_SPLIT (1; 2 halves the activation memory at the same batch); CLUSTER=<name>;
+#        EPOCH_STEPS_OVERRIDE=<n> (probes only: a short "epoch" so the snapshot sidecar gets exercised)
 #
 # Staged per cluster under ~/scratch/lightgen/segvigen_release/ (scripts_segvigen/newdata/verify_and_pack.py):
 #   tars/latents.tar tars/cond_*.tar tars/SHA256SUMS   full_seg_rekeyed.pt   segvigen-lightning.bundle
@@ -55,7 +56,9 @@ ${MEM}
 #SBATCH --requeue
 ${SIGNAL}
 # 25-min lead before the time limit: a 10 GB last.ckpt on Lustre must finish before SIGKILL.
-handle_timeout() { echo "SIGTERM: stopping training gracefully..."; [ -n "\$SIDE_PID" ] && kill \$SIDE_PID 2>/dev/null; [ -n "\$TRAIN_PID" ] && kill -0 \$TRAIN_PID 2>/dev/null && { kill -TERM \$TRAIN_PID; wait \$TRAIN_PID; }; scontrol requeue \${SLURM_JOB_ID}; exit 0; }
+# The sidecar runs in its own process group so its converter child dies with it (a bare kill of the shell orphans it).
+stop_sidecar() { [ -n "\${SIDE_PID:-}" ] && { kill -TERM -- -\$SIDE_PID 2>/dev/null; wait \$SIDE_PID 2>/dev/null; SIDE_PID=""; }; }
+handle_timeout() { echo "SIGTERM: stopping training gracefully..."; stop_sidecar; [ -n "\${EPOCH_STEPS:-}" ] && bash script/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS flush >> "\$SIDELOG" 2>&1; [ -n "\$TRAIN_PID" ] && kill -0 \$TRAIN_PID 2>/dev/null && { kill -TERM \$TRAIN_PID; wait \$TRAIN_PID; }; scontrol requeue \${SLURM_JOB_ID}; exit 0; }
 trap 'handle_timeout' SIGTERM
 sleep 60   # hedged submission: a job cancelled in its first minute has cost nothing
 echo "====================================== Job \${SLURM_JOB_NAME} (\${SLURM_JOB_ID}) cluster ${CLUSTER} node \$(hostname) started \$(date) restart=\${SLURM_RESTART_COUNT:-0}"
@@ -64,21 +67,24 @@ module load ${MODULES}
 source ${ENVREPO}/env/bin/activate
 DATA=\$SLURM_TMPDIR/segvigen_release; mkdir -p \$DATA
 t0=\$SECONDS
-ls ${STAGE}/tars/*.tar | xargs -P 9 -I{} tar -xf {} -C \$DATA || { echo "FATAL: unpack failed"; exit 1; }
+# exactly the tars SHA256SUMS names (a stray tar of an older pack must not be unpacked on top)
+awk '{print \$2}' ${STAGE}/tars/SHA256SUMS | xargs -P 9 -I{} tar -xf ${STAGE}/tars/{} -C \$DATA || { echo "FATAL: unpack failed"; exit 1; }
 N_USABLE=\$(wc -l < \$DATA/meta/usable.txt); N_COND=\$(ls \$DATA/cond_fp16 | wc -l); N_EMIT=\$(ls \$DATA/emission_npz | grep -c '\.npz\$')
 N_TRAIN=\$(python -c "import json; print(len(json.load(open('\$DATA/meta/release_splits_usable.json'))['train']))")
 echo "unpacked in \$((SECONDS-t0))s: usable=\$N_USABLE cond=\$N_COND emission_npz=\$N_EMIT train=\$N_TRAIN"
 [ "\$N_COND" = "\$N_USABLE" ] && [ "\$N_EMIT" = "\$N_USABLE" ] || { echo "FATAL: unpacked counts differ from usable.txt"; exit 1; }
-EPOCH_STEPS=\$(( N_TRAIN / (4 * ${BS}) ))
+EPOCH_STEPS=${EPOCH_STEPS_OVERRIDE:-\$(( N_TRAIN / (4 * ${BS}) ))}
 cd ${CODE}
-mkdir -p log ${OUTPUT_DIR}/snapshots; TS=\$(date +%Y%m%d-%H%M%S); LOG="log/\${TS}-${NAME}${OUT_SUFFIX:-}-${CLUSTER}.log"
+mkdir -p log ${OUTPUT_DIR}/snapshots; TS=\$(date +%Y%m%d-%H%M%S); LOG="log/\${TS}-${NAME}${OUT_SUFFIX:-}-${CLUSTER}.log"; SIDELOG="log/\${TS}-${NAME}${OUT_SUFFIX:-}-${CLUSTER}-sidecar.log"
 export PYTORCH_ALLOC_CONF=expandable_segments:True PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export FLEX_GEMM_USE_AUTOTUNE_CACHE=0 FLEX_GEMM_AUTOSAVE_AUTOTUNE_CACHE=0
-export HF_HOME=\$HOME/scratch/.cache/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TORCH_HOME=\$HOME/scratch/.cache/torch
+# fir keeps its Hugging Face cache in ~/.cache, the other clusters got theirs staged in ~/scratch/.cache
+if [ -d \$HOME/scratch/.cache/huggingface/hub ]; then export HF_HOME=\$HOME/scratch/.cache/huggingface; else export HF_HOME=\$HOME/.cache/huggingface; fi
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1; echo "HF_HOME=\$HF_HOME"
 if [ -f \$HOME/.netrc ] && curl -sSI -m 8 https://api.wandb.ai >/dev/null 2>&1; then echo "wandb: online"; else export WANDB_MODE=offline; echo "wandb: OFFLINE (sync later from a login node)"; fi
 if ! ( : > \$HOME/.wtest.\$\$ ) 2>/dev/null; then export TRITON_CACHE_DIR=\$SLURM_TMPDIR/.triton CUDA_CACHE_PATH=\$SLURM_TMPDIR/.nv MPLCONFIGDIR=\$SLURM_TMPDIR/.mpl WANDB_CACHE_DIR=\$SLURM_TMPDIR/.wandb WANDB_CONFIG_DIR=\$SLURM_TMPDIR/.wandb_cfg XDG_CACHE_HOME=\$SLURM_TMPDIR/.cache; echo "HOME read-only: caches redirected to \$SLURM_TMPDIR"; else rm -f \$HOME/.wtest.\$\$; fi
 # one eval-ready weights file per epoch (the paper run kept full 10.5 GB states through an external mirror)
-bash script/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS > "log/\${TS}-${NAME}${OUT_SUFFIX:-}-${CLUSTER}-sidecar.log" 2>&1 &
+setsid bash script/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS > "\$SIDELOG" 2>&1 &
 SIDE_PID=\$!
 set -o pipefail
 srun python -u train.py \\
@@ -100,8 +106,8 @@ srun python -u train.py \\
     > >(tee "\${LOG}") 2>&1 &
 TRAIN_PID=\$!
 wait \$TRAIN_PID; EXIT_CODE=\$?
-sleep 5; kill \$SIDE_PID 2>/dev/null
-bash script/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS once >> "log/\${TS}-${NAME}${OUT_SUFFIX:-}-${CLUSTER}-sidecar.log" 2>&1
+stop_sidecar
+bash script/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS once >> "\$SIDELOG" 2>&1
 if [ \$EXIT_CODE -ne 0 ]; then
     if [ \${SLURM_RESTART_COUNT:-0} -lt 3 ]; then echo "Training crashed (exit \$EXIT_CODE) at \$(date). Requeueing..."; scontrol requeue \${SLURM_JOB_ID}; exit 0; fi
     echo "Training crashed (exit \$EXIT_CODE); restart cap reached. NOT requeueing."; exit \$EXIT_CODE

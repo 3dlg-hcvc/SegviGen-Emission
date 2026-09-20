@@ -91,31 +91,39 @@ def main() -> None:
     failed = os.path.join(out_dir, f"_failed.rank{args.rank}.tsv")
     print(f"[dual_grid] rank {args.rank}/{args.world_size}: {len(sids)} shapes -> {out_dir}", flush=True)
 
+    # process_one writes <dir>/<sid>.vxz in place, so it writes into a per-rank scratch dir and only a
+    # gated file is renamed into out_dir: a kill at any point leaves nothing a later run would skip.
+    tmp_dir = os.path.join(out_dir, f"_tmp.rank{args.rank}")
+    os.makedirs(tmp_dir, exist_ok=True)
+    for f in os.listdir(tmp_dir):
+        os.remove(os.path.join(tmp_dir, f))
     n = {"ok": 0, "skipped": 0, "mismatch": 0, "error": 0}
     t0 = time.time()
     for i, sid in enumerate(sids):
         out_path = os.path.join(out_dir, f"{sid}.vxz")
+        tmp_path = os.path.join(tmp_dir, f"{sid}.vxz")
         if os.path.exists(out_path):
             n["skipped"] += 1
             continue
         try:
             glb = resolve_glb(sid, args.glb_root, meta)
-            r = paper.process_one(sid, glb, out_dir, RES)
+            r = paper.process_one(sid, glb, tmp_dir, RES)
             if r["status"] != "ok":
                 raise RuntimeError(r.get("error", r["status"]))
-            c_dg, _ = o_voxel.io.read(out_path)
+            c_dg, _ = o_voxel.io.read(tmp_path)
             c_pbr, _ = o_voxel.io.read(os.path.join(args.release, sid, "pbr_voxels.vxz"))
             a, b = _cells(c_dg), _cells(c_pbr)
             if a.shape != b.shape or not np.array_equal(a, b):
-                os.remove(out_path)
+                os.remove(tmp_path)
                 n["mismatch"] += 1
                 with open(failed, "a") as f:
                     f.write(f"{sid}\tmismatch\tdual_grid={len(a)} pbr={len(b)}\n")
                 continue
+            os.replace(tmp_path, out_path)
             n["ok"] += 1
         except Exception as e:  # noqa: BLE001
-            if os.path.exists(out_path):
-                os.remove(out_path)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
             n["error"] += 1
             with open(failed, "a") as f:
                 f.write(f"{sid}\terror\t{e!r}\n")

@@ -20,7 +20,6 @@ Usage:
 """
 import argparse
 import hashlib
-import io
 import json
 import os
 import tarfile
@@ -56,7 +55,8 @@ def _check(job):
         for k in ("shape", "pbr", "emit"):
             with np.load(p[k]) as d:
                 feats, coords = d["feats"], d["coords"]
-            if feats.ndim != 2 or feats.shape[1] != 32 or feats.shape[0] != coords.shape[0] or coords.shape[1] != 3:
+            if (feats.ndim != 2 or coords.ndim != 2 or feats.shape[1] != 32 or coords.shape[1] != 3
+                    or feats.shape[0] != coords.shape[0] or feats.shape[0] == 0):
                 return sid, f"bad_shape_{k}:{feats.shape}/{coords.shape}", 0
             if not np.isfinite(feats).all():
                 return sid, f"nonfinite_{k}", 0
@@ -120,25 +120,29 @@ def pack(args):
     sids = [l.strip() for l in open(os.path.join(meta, "usable.txt")) if l.strip()]
     tars = os.path.join(args.root, "tars")
     os.makedirs(tars, exist_ok=True)
+    # one generation at a time: tars of an older verify (or another --cond_shards) must not sit beside
+    # the new ones, the training job unpacks every tar SHA256SUMS names
+    stale = [f for f in os.listdir(tars) if not f.startswith(".")]
+    if stale and not args.overwrite:
+        raise SystemExit(f"[pack] {tars} holds {len(stale)} files; pass --overwrite to rebuild them all")
+    for f in stale:
+        os.remove(os.path.join(tars, f))
     lat = os.path.join(tars, "latents.tar")
-    if not os.path.exists(lat):
-        tmp = lat + f".tmp{os.getpid()}"
-        with tarfile.open(tmp, "w") as t:
-            for name in ("release_index.parquet", "release_splits_usable.json", "usable.txt", "dropped.tsv"):
-                t.add(os.path.join(meta, name), arcname=f"meta/{name}")
-            t.add(os.path.join(args.root, EMIT_DIR, "token_counts.json"), arcname="emission_npz/token_counts.json")
-            for s in sids:
-                p = _paths(args.root, s)
-                t.add(p["shape"], arcname=f"shape_latents/{SHAPE_NAME}/{s}.npz")
-                t.add(p["pbr"], arcname=f"pbr_latents/{PBR_NAME}/{s}.npz")
-                t.add(p["emit"], arcname=f"emission_npz/{s}.npz")
-        os.replace(tmp, lat)
+    tmp = lat + f".tmp{os.getpid()}"
+    with tarfile.open(tmp, "w") as t:
+        for name in ("release_index.parquet", "release_splits_usable.json", "usable.txt", "dropped.tsv"):
+            t.add(os.path.join(meta, name), arcname=f"meta/{name}")
+        t.add(os.path.join(args.root, EMIT_DIR, "token_counts.json"), arcname="emission_npz/token_counts.json")
+        for s_ in sids:
+            p_ = _paths(args.root, s_)
+            t.add(p_["shape"], arcname=f"shape_latents/{SHAPE_NAME}/{s_}.npz")
+            t.add(p_["pbr"], arcname=f"pbr_latents/{PBR_NAME}/{s_}.npz")
+            t.add(p_["emit"], arcname=f"emission_npz/{s_}.npz")
+    os.replace(tmp, lat)
     n = args.cond_shards
     jobs = []
     for k in range(n):
-        out = os.path.join(tars, f"cond_{k:02d}of{n:02d}.tar")
-        if not os.path.exists(out):
-            jobs.append((args.root, out, sids[k::n]))
+        jobs.append((args.root, os.path.join(tars, f"cond_{k:02d}of{n:02d}.tar"), sids[k::n]))
     with ProcessPoolExecutor(min(args.workers, max(1, len(jobs)))) as ex:
         for out in ex.map(_pack_cond, jobs):
             print("[pack]", out, flush=True)
@@ -157,6 +161,7 @@ def main():
     ap.add_argument("--root", required=True)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--cond_shards", type=int, default=8)
+    ap.add_argument("--overwrite", action="store_true", help="pack: delete the tars already there first")
     args = ap.parse_args()
     {"verify": verify, "pack": pack}[args.cmd](args)
 

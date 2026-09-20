@@ -113,8 +113,11 @@ def main() -> None:
         sids = sids[:args.limit]
     direct = {}   # every route needs it: build must not redo a shape that convert owns
     for sp in DIRECT_SPLITS:   # one listing per split, not a stat per shape
-        for name in os.listdir(os.path.join(args.dataset_direct, sp)):
-            direct.setdefault(name, sp)
+        try:
+            for name in os.listdir(os.path.join(args.dataset_direct, sp)):
+                direct.setdefault(name, sp)
+        except FileNotFoundError:
+            print(f"[cond] no {sp} under {args.dataset_direct}", flush=True)
     builder = Builder(args.segvigen_repo) if "build" in routes else None
     if builder is not None:
         assert args.segvigen_repo, "--routes build needs --segvigen_repo"
@@ -128,22 +131,26 @@ def main() -> None:
             n["cached"] += 1
             continue
         try:
+            # the route is decided by the files that exist, then run only if this call was asked for it
             paper = os.path.join(args.paper_fp16_root, sid, "cond_pos.pth")
-            if "reuse" in routes and os.path.exists(paper):
+            src = None
+            if sid in direct:
+                d = os.path.join(args.dataset_direct, direct[sid], sid)
+                src = next((q for q in (os.path.join(d, "cond_pos.pth"), os.path.join(d, "cond.pth"))
+                            if os.path.exists(q)), None)
+            route = "reuse" if os.path.exists(paper) else "convert" if src else "build"
+            if route not in routes:
+                n["left"] += 1
+            elif route == "reuse":
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 tmp = dest + f".tmp{os.getpid()}"
                 shutil.copyfile(paper, tmp)
                 os.replace(tmp, dest)
                 n["reuse"] += 1
-            elif "convert" in routes and sid in direct and not os.path.exists(paper):
-                d = os.path.join(args.dataset_direct, direct[sid], sid)
-                src = next((p for p in (os.path.join(d, "cond_pos.pth"), os.path.join(d, "cond.pth"))
-                            if os.path.exists(p)), None)
-                if src is None:
-                    raise FileNotFoundError(f"no cond file under {d}")
+            elif route == "convert":
                 _save(_as_fp16(torch.load(src, map_location="cpu")), dest)
                 n["convert"] += 1
-            elif "build" in routes and sid not in direct and not os.path.exists(paper):
+            else:
                 thumb = os.path.join(args.release, sid, "thumbnail.png")
                 if not os.path.exists(thumb):
                     no_thumb.append(sid)
@@ -154,8 +161,6 @@ def main() -> None:
                     repaired[sid] = used
                 _save(t, dest)
                 n["build"] += 1
-            else:
-                n["left"] += 1   # belongs to a route this call was not asked to run
         except Exception as e:  # noqa: BLE001
             n["failed"] += 1
             failed.append({"sid": sid, "error": repr(e)[:300]})
