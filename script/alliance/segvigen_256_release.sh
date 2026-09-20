@@ -11,7 +11,8 @@
 #   env: MAX_STEPS=<n> bounded probe; OUT_SUFFIX=_probe keeps a probe out of the real run's directory (its
 #        last.ckpt and wandb id would otherwise be resumed); WALLTIME=HH:MM:SS (default 24:00:00);
 #        BATCH_SIZE_PER_GPU (12), BATCH_SPLIT (1; 2 halves the activation memory at the same batch); CLUSTER=<name>;
-#        EPOCH_STEPS_OVERRIDE=<n> (probes only: a short "epoch" so the snapshot sidecar gets exercised)
+#        EPOCH_STEPS_OVERRIDE=<n> (probes only: a short "epoch" so the snapshot sidecar gets exercised);
+#        STAGE=<dir> (probes only: another staged input dir, e.g. a small subset pack)
 #
 # Staged per cluster under ~/scratch/lightgen/segvigen_release/ (scripts_segvigen/newdata/verify_and_pack.py):
 #   tars/latents.tar tars/cond_*.tar tars/SHA256SUMS   full_seg_rekeyed.pt   segvigen-lightning.bundle
@@ -21,7 +22,7 @@ MAX_STEPS="${MAX_STEPS:-}"; WALLTIME="${WALLTIME:-24:00:00}"; DRY=0; [ "${1:-}" 
 BS="${BATCH_SIZE_PER_GPU:-12}"; SPLIT="${BATCH_SPLIT:-1}"
 CLUSTER="${CLUSTER:-$(scontrol show config 2>/dev/null | awk -F'= ' '/^ClusterName/{print $2}')}"
 CODE="${CODE:-$HOME/scratch/segvigen-lightning}"; ENVREPO="${ENVREPO:-$HOME/scratch/TRELLIS.2-lightning}"
-STAGE="$HOME/scratch/lightgen/segvigen_release"; OUTPUT_DIR="$CODE/outputs/${NAME}${OUT_SUFFIX:-}"
+STAGE="${STAGE:-$HOME/scratch/lightgen/segvigen_release}"; OUTPUT_DIR="$CODE/outputs/${NAME}${OUT_SUFFIX:-}"
 MODULES="StdEnv/2023 gcc python/3.11 cuda/12.6 arrow/21.0.0 opencv/4.13.0 sparsehash"
 SIGNAL="#SBATCH --signal=B:SIGTERM@1500"; MEM="#SBATCH --mem=1024G"; GPU="#SBATCH --gpus-per-node=h100:4"; TIME="#SBATCH --time=${WALLTIME}"
 case "$CLUSTER" in
