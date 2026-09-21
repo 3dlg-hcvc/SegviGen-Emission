@@ -6,7 +6,8 @@
 # external mirror; this keeps what selection loads: scripts_segvigen/unrekey_for_eval.py's standalone file (raw
 # weights, as the published step 23405 was bridged), 2.6 GB, as <output dir>/snapshots/step<N>.pt.
 # A checkpoint is read only after its mtime has been still for 90 s (Lightning writes it in place), and only when
-# its step is a whole number of epochs. `once` takes whatever the newest checkpoint holds (the end of a run);
+# its step is a whole number of epochs; every decision is logged (the 2026-09-20 run skipped its first epoch,
+# step 758, through a branch that printed nothing, so the cause could not be read back). `once` takes whatever the newest checkpoint holds (the end of a run);
 # `flush` is one pass with no wait, epoch checkpoints only: the job's SIGTERM trap runs it BEFORE it signals the
 # trainer, whose graceful stop rewrites last.ckpt at a mid-epoch step and would bury an epoch not yet taken.
 set -u
@@ -21,7 +22,7 @@ while true; do
     if [ "$m" != "$seen" ] && { [ "$age" -ge 90 ] || [ "$MODE" != loop ]; }; then
       if read -r step ep < <(python scripts_segvigen/ckpt_step.py "$ck" 2>/dev/null); then
         dst="$OUT/snapshots/step$(printf '%07d' "$step").pt"
-        if [ -e "$dst" ]; then seen=$m
+        if [ -e "$dst" ]; then seen=$m; echo "$(date) step $step already has a snapshot"
         elif [ "$MODE" = once ] || [ $(( step % EPOCH )) -eq 0 ]; then
           echo "$(date) snapshot step=$step epoch=$ep from $ck"
           if python scripts_segvigen/unrekey_for_eval.py "$ck" "$dst.tmp$$" > "$dst.log" 2>&1 && [ "$(stat -c %Y "$ck")" = "$m" ]; then
@@ -29,7 +30,7 @@ while true; do
           else
             rm -f "$dst.tmp$$"; echo "$(date) snapshot of step $step failed or the checkpoint changed while it was read; will retry"
           fi
-        else seen=$m
+        else seen=$m; echo "$(date) step $step is not a whole number of epochs ($EPOCH steps): no snapshot"
         fi
       else echo "$(date) $ck not readable yet"
       fi
