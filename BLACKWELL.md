@@ -1,5 +1,7 @@
 # Blackwell (sm_120) environment facts
 
+> The launchers, bootstrap and staging scripts this file cites (`script/bw/`, the `lightgen` branch's `script/star2/` launchers) were deleted in the refactor's step 5 (D17); they are at tag `pre-refactor`. Step 15 folds these facts into the doc of record.
+
 What actually made training work on the RTX Pro 6000 Blackwell cards
 (cs-venus-05/19/21), gathered before running anything for real on venus-05
 (owner instruction, board `lightning_port`, 2026-08-26) and applied in

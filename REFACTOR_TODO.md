@@ -25,7 +25,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 2. Dead root files, one-off scripts and the live-evaluation loop
 - [x] 3. `archive/`, `docs/`, `reports/`, stale ignore rules
 - [x] 4. `blender_packages/` (upstream's demo material stays, D12)
-- [ ] 5. Launchers (per D17)
+- [x] 5. Launchers (per D17)
 - [ ] 5b. Move the kept cluster scripts into `script/internal/`
 - [ ] 6. Configs (per D17)
 - [x] 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
@@ -377,18 +377,20 @@ exists (D14 keeps it) and upstream's `install_pillow.py` route applies, as in TR
 `script/` holds 67 files (alliance 2, bw 8, fir 25, star2 28, vulcan 4); plus the root `.sbatch`
 runners not handled in step 2.
 
-- [ ] Kept (release): `script/alliance/{segvigen_256_release.sh,snapshot_sidecar.sh}`,
+- [x] Kept (release): `script/alliance/{segvigen_256_release.sh,snapshot_sidecar.sh}`,
   `script/star2/newdata_{dual_grid,encode,cond,pack}.sbatch`.
-- [ ] Kept only if D17 keeps the paper's: `script/bw/{launch_segvigen_256_6gpu.sbatch,bootstrap_segvigen_bw.sh,stage_data_256_local.sh,stage_data_256_local.sbatch}`,
+- [x] Deleted per D17 (the paper's): `script/bw/{launch_segvigen_256_6gpu.sbatch,bootstrap_segvigen_bw.sh,stage_data_256_local.sh,stage_data_256_local.sbatch}`,
   root `build256_array.sbatch`, `test256_build.sbatch`, `convert_cond_fp16_array.sbatch`.
-- [ ] Deleted: Kevin's 512 lane, never trained (`script/bw/{launch_segvigen_bw_6gpu.sbatch,extract_staged_shards.sh}`,
+- [x] Deleted: Kevin's 512 lane, never trained (`script/bw/{launch_segvigen_bw_6gpu.sbatch,extract_staged_shards.sh}`,
   root `stage_shards_{train,val}.sbatch`, `extract_val_only_venus05.sbatch`,
   `scripts_segvigen/stage_shards.py`); the `lightgen` branch's `script/fir/` (25), `script/vulcan/`
   (4) and its 24 files in `script/star2/` (emission VAE and DiT, PBR VAE finetune, 74k prep).
 
 **Instructions:**
 
-**Result:**
+**Result:** 66 files deleted: the paper's launchers (D17), Kevin's 512 lane, the `lightgen` branch's `script/fir/`,
+`script/vulcan/` and 24 `script/star2/` launchers; kept the release's six. `BLACKWELL.md` notes its cited scripts are
+at tag `pre-refactor`. Live-code gate 20/20 + 20/20 identical.
 
 ### 5b. Move the kept cluster scripts into `script/internal/`
 
