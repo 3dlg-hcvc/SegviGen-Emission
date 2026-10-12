@@ -35,7 +35,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 11. The chain scripts in `scripts_segvigen/`
 - [x] 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
 - [x] 13. Environment files
-- [ ] 14. Release layer: generic entry points for LightgenBench users
+- [x] 14. Release layer: generic entry points for LightgenBench users
 - [ ] 15. Docs
 - [ ] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 - [ ] 17. Cut-over (per D8)
@@ -609,14 +609,16 @@ step 15.
   4 × 12, `batch_split`, `ckpt_last_every_n_steps` = steps per epoch, `disable_final_snapshot=true`,
   the data knobs); the config's two leftover jupiter `cond_search_dirs` (`:44-45`, replaced by the
   launcher's override) go; the README states the GPU memory needed.
-- [ ] Inference: step 10's predictor on the release test split.
+- [x] Inference: step 10's predictor on the release test split.
 - [x] The internal launchers stay as they are.
 
 **Instructions:**
 
 **Result:** Part 1 `681cbfd`: `script/lightgenbench/{prepare_inputs,get_init,train}.sh`; the release config's two jupiter
 `cond_search_dirs` go. On a 4-shape mini release (Solar L40S): dual grids byte-identical to jupiter's, latents within 3.4e-3, route-3
-conditioning within 6e-4 mean, init identical (640/640), `train.sh` dry run trains a step. Part 2 (inference) waits for step 10.
+conditioning within 6e-4 mean, init identical (640/640), `train.sh` dry run trains a step. Part 2: `predict.sh` (seeds, split = the
+usable rows of `release_index.parquet`); on jupiter's release inputs (A40, Kevin's env) it remakes the seed-0 test dumps, byte-identical
+but for the step-10 small shapes (masks 198/200, mask × albedo 197/200); on the 4090 mini release it runs.
 
 ### 15. Docs
 
