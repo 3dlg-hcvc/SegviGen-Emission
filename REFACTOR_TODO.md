@@ -27,7 +27,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 4. `blender_packages/` (upstream's demo material stays, D12)
 - [x] 5. Launchers (per D17)
 - [x] 5b. Move the kept cluster scripts into `script/internal/`
-- [ ] 6. Configs (per D17)
+- [x] 6. Configs (per D17)
 - [x] 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
 - [ ] 8. Our modules (per D13)
 - [ ] 9. Coverage run (no code change)
@@ -407,15 +407,17 @@ unchanged. Parent doc `docs/baselines/segvigen-live-training.md:126-127` goes to
 
 ### 6. Configs (per D17)
 
-- [ ] Kept: upstream's configs (D9), `configs/gen/segvigen_emissive_256_release.yaml`, and the paper's
-  `segvigen_emissive_256.yaml` only if D17 keeps it.
-- [ ] Deleted: `configs/gen/segvigen_emissive_direct.yaml` (512 lane) and the `lightgen` branch's 25
+- [x] Kept: upstream's configs (D9) and `configs/gen/segvigen_emissive_256_release.yaml`; the paper's
+  `segvigen_emissive_256.yaml` goes (D17; its copy of record is jupiter `outputs/segvigen_256_bw_6gpu/config.yaml`).
+- [x] Deleted: `configs/gen/segvigen_emissive_direct.yaml` (512 lane) and the `lightgen` branch's 25
   `emission_*` configs (12 under `configs/gen/`, 13 under `configs/scvae/`). The training check brings
   its own config (step 7).
 
 **Instructions:**
 
-**Result:**
+**Result:** 27 configs deleted (the paper's, the 512 lane's, the `lightgen` branch's 25 `emission_*`); three comments
+naming them now point at jupiter or tag `pre-refactor` (syntax trees and the parsed release config unchanged).
+Live-code gate 20/20 + 20/20; published chain identical (5/5, 20/20, bridge 640/640).
 
 ### 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
 

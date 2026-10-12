@@ -1,8 +1,8 @@
 # SegviGen-Emission, 256-native lane, retrained on the released dataset (3dlg-hcvc/LightgenBench,
 # jupiter datasets/dataset_release: train 36,426 / val 200 / test 200), 2026-09.
 #
-# The models: and trainer: blocks and both normalization blocks are segvigen_emissive_256.yaml's
-# (the paper run, segvigen_256_bw_6gpu) unchanged: same architecture, init from full_seg, lr 1e-5,
+# The models: and trainer: blocks and both normalization blocks are the paper config's (the run
+# segvigen_256_bw_6gpu; jupiter outputs/segvigen_256_bw_6gpu/config.yaml) unchanged: same architecture, init from full_seg, lr 1e-5,
 # unweighted loss, 50k steps, stock TRELLIS.2 pipeline.json stats. What differs:
 #   - every data location is a placeholder the launcher overrides (script/internal/alliance/segvigen_256_release.sh
 #     unpacks the tars into $SLURM_TMPDIR); inputs come from scripts_segvigen/newdata/
@@ -43,8 +43,8 @@ dataset:
       - __SET_BY_LAUNCHER__
       - /3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct/train_72k_agentic
       - /3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct/val_72k
-    # Shipped TRELLIS.2 pipeline.json stock stats -- SAME values as
-    # segvigen_emissive_direct.yaml, copied verbatim. NOT the DiT baseline's
+    # Shipped TRELLIS.2 pipeline.json stock stats -- SAME values as the 512 lane's
+    # segvigen_emissive_direct.yaml (tag pre-refactor), copied verbatim. NOT the DiT baseline's
     # regenerated agentic-VAE emission stats (different latent space).
     shape_normalization:
       mean:

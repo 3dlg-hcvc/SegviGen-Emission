@@ -21,7 +21,7 @@ Per-shape sources (three independent roots, joined by sha256):
                                     by the _agentic split JSON, not those directory names)
 
 Normalization: shape_normalization / tex_normalization are the SAME shipped
-TRELLIS.2 pipeline.json stats segvigen_emissive_direct.yaml uses (NOT the
+TRELLIS.2 pipeline.json stats the 512 lane's config used (NOT the
 DiT baseline's regenerated agentic-VAE emission stats) -- both our emission
 npz and Dongchen's pbr latent were encoded with the STOCK tex encoder, so
 they share the stock tex_normalization; the shape latent is the stock

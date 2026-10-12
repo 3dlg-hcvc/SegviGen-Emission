@@ -73,8 +73,8 @@ DEFAULT_SIDS_FILE = (f"{SEGVIGEN}/xgconsole/web/_preview/sample56_latest/"
                      "dataset_filtering_selected_56.txt")
 VAL_SPLIT_DIR = "/3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct/val_72k"
 
-# Shipped TRELLIS.2 pipeline.json stock statistics, the same values
-# segvigen_emissive_256.yaml trains with, copied verbatim.
+# Shipped TRELLIS.2 pipeline.json stock statistics, the same values the paper config
+# (jupiter outputs/segvigen_256_bw_6gpu/config.yaml) trains with, copied verbatim.
 SHAPE_NORM = {
     "mean": [0.781296, 0.018091, -0.495192, -0.558457, 1.06053, 0.093252, 1.518149, -0.933218,
              -0.732996, 2.604095, -0.118341, -2.143904, 0.495076, -2.179512, -2.130751, -0.996944,
