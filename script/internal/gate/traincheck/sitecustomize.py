@@ -12,6 +12,12 @@ import json
 import os
 import random
 
+# The coverage run (step 9) traces through this hook too (see ../covsite/sitecustomize.py).
+if os.environ.get("COVERAGE_PROCESS_START"):
+    import coverage
+
+    coverage.process_startup()
+
 REC = os.environ.get("TRAINCHECK_RECORD")
 if REC:
     import numpy as np

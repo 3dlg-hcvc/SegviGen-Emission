@@ -12,7 +12,7 @@
 #SBATCH --account=3dlg-hcvc-lab
 #SBATCH --ntasks=1
 set -uo pipefail
-TGZ="${1:?tree tgz}"; NAME="${2:?out name}"
+TGZ="${1:?tree tgz}"; NAME="${2:?out name}"; COV="${3:-}"   # 3rd arg "cov": the coverage run (step 9)
 H=$HOME/segvigen_refactor; G=$H/gate
 J=/3dlg-jupiter-project/lightgen; F=/3dlg-falas/project/omages/lightgen; L=$J/datasets/dataset_release_latents
 PAPER_SNAP=$F/segvigen_emissive/outputs/segvigen_256_bw_6gpu_ckpts_mirror/step0023405_snapshot.ckpt
@@ -26,6 +26,10 @@ export HF_HOME=$J/hf_cache HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export TRITON_CACHE_DIR=$LOC/triton TORCHINDUCTOR_CACHE_DIR=$LOC/inductor
 export FLEX_GEMM_AUTOTUNE_CACHE_PATH=$LOC/flex_gemm.json; cp $HOME/.flex_gemm/autotune_cache.json $FLEX_GEMM_AUTOTUNE_CACHE_PATH 2>/dev/null || true
 export SEGVIGEN_PROBE=$TREE
+if [ "$COV" = cov ]; then
+  mkdir -p $LOC/cov; printf "[run]\nparallel = True\ndata_file = $LOC/cov/.coverage\nsource = $TREE\nomit = $TREE/o-voxel/*\n" > $LOC/covrc
+  export COVERAGE_PROCESS_START=$LOC/covrc PYTHONPATH=$G/covsite:$H/pydeps
+fi
 echo "[pubgate] $(date) node=$(hostname) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader) tree=$(cat $TREE/TREE_REV 2>/dev/null)"
 cd $TREE
 fail=0
@@ -46,6 +50,7 @@ python3 $G/compare_bridged.py $LOC/bridged.pt $PAPER_BRIDGED > $LOC/out/bridge_c
 cat $LOC/out/bridge_check.txt
 { python3 $TREE/scripts_segvigen/ckpt_step.py $PAPER_SNAP; python3 $TREE/scripts_segvigen/ckpt_step.py $REL/ckpts/last.ckpt; } > $LOC/out/ckpt_step.txt 2>&1 || fail=$((fail+1))
 cat $LOC/out/ckpt_step.txt
+if [ "$COV" = cov ]; then COVERAGE_PROCESS_START= python3 -m coverage combine --rcfile=$LOC/covrc -q && COVERAGE_PROCESS_START= python3 -m coverage json --rcfile=$LOC/covrc -q -o $LOC/out/cov.json; fi
 mkdir -p $H/out/$NAME; cp -r $LOC/out/. $H/out/$NAME/
 echo "[pubgate] $(date) done, $fail failed"
 exit $(( fail > 0 ))

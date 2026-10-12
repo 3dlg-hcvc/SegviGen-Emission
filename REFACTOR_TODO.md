@@ -30,7 +30,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 6. Configs (per D17)
 - [x] 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
 - [x] 8. Our modules (per D13)
-- [ ] 9. Coverage run (no code change)
+- [x] 9. Coverage run (no code change)
 - [ ] 10. An inference path in this repo (per D18; the rescore needs Dongchen's go)
 - [ ] 11. The chain scripts in `scripts_segvigen/`
 - [ ] 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
@@ -502,7 +502,9 @@ switches (`ATTN_BACKEND`, `SPARSE_ATTN_BACKEND`, `FLEX_GEMM_*`).
 
 **Instructions:**
 
-**Result:**
+**Result:** At `da9ecd1` (training fresh/resume/resume_paper, published chain, live-code gate on 5+5 shapes): 445/840 of our
+executable lines ran; report `C/coverage/step9/report.txt`. Not run: wandb paths, the image-encoder path, `pos_weight` (D6),
+`live_eval_one.py`'s own CLI, timing branches. The release producers were not imported: step 11 runs and traces them.
 
 ### 10. An inference path in this repo (per D18; needs Dongchen's go)
 
