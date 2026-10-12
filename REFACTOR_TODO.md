@@ -33,7 +33,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 9. Coverage run (no code change)
 - [ ] 10. An inference path in this repo (per D18; the rescore needs Dongchen's go)
 - [x] 11. The chain scripts in `scripts_segvigen/`
-- [ ] 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
+- [x] 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
 - [ ] 13. Environment files
 - [ ] 14. Release layer: generic entry points for LightgenBench users
 - [ ] 15. Docs
@@ -562,7 +562,9 @@ change.
 
 **Instructions:**
 
-**Result:**
+**Result:** `trellis2/trainers/lightgen_hooks.py` = TRELLIS2's file plus the peak-VRAM line and a `SnapshotCallback` with
+`disable_final_snapshot`; `callbacks.py` is upstream's again; kept in upstream files the same hunks TRELLIS2 kept. Training check
+identical in all three modes (also the `[train]`/`[val]`/`[ckpt-timing]` lines); live-code gate 20/20 + 20/20.
 
 ### 13. Environment files
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from typing import Any, Dict, Optional
 from contextlib import contextmanager
 
@@ -183,95 +182,6 @@ class SamplerStateCallback(pl.Callback):
             sampler.load_state_dict(state)
 
 
-class CheckpointTimingCallback(pl.Callback):
-    """Log checkpoint save/load events with timestamps + per-step batch time
-    every N steps. Lets us correlate KL/L1 spikes against ckpt I/O.
-
-    Emits to stdout (rank 0 only) — gets picked up by the tee log:
-
-        [ckpt-timing] LOAD step=2420 t=1747312345.12
-        [ckpt-timing] SAVE_START step=4488 t=...
-        [ckpt-timing] RESUME_AFTER_SAVE step=4489 gap=132.4s t=...
-        [ckpt-timing] BATCH_TIME step=4500 dt=1.42s
-    """
-
-    def __init__(self, batch_log_every: int = 100) -> None:
-        super().__init__()
-        self.batch_log_every = int(batch_log_every)
-        self._save_t0: Optional[float] = None
-        self._batch_t0: Optional[float] = None
-
-    def _emit(self, msg: str) -> None:
-        # Rank-0 only via Lightning's is_global_zero (set via trainer at runtime).
-        # We can't easily check rank here without trainer; on_*_checkpoint
-        # callbacks already only fire on rank 0 in Lightning's default
-        # checkpoint flow. on_train_batch_* fires on every rank, so we gate
-        # those manually via the trainer arg.
-        print(msg, flush=True)
-
-    def on_load_checkpoint(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", checkpoint: Dict[str, Any]
-    ) -> None:
-        step = checkpoint.get("global_step", "?")
-        epoch = checkpoint.get("epoch", "?")
-        self._emit(f"[ckpt-timing] LOAD step={step} epoch={epoch} t={time.time():.3f}")
-
-    def on_save_checkpoint(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", checkpoint: Dict[str, Any]
-    ) -> None:
-        step = int(getattr(trainer, "global_step", 0))
-        epoch = int(getattr(trainer, "current_epoch", 0))
-        self._save_t0 = time.time()
-        self._emit(f"[ckpt-timing] SAVE_START step={step} epoch={epoch} t={self._save_t0:.3f}")
-
-    def on_train_batch_start(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", batch: Any, batch_idx: int
-    ) -> None:
-        if not bool(getattr(trainer, "is_global_zero", True)):
-            return
-        # First train batch after a save → roughly when ckpt write + post-save
-        # callback chain finished blocking the trainer.
-        if self._save_t0 is not None:
-            dt = time.time() - self._save_t0
-            step = int(getattr(trainer, "global_step", 0))
-            self._emit(
-                f"[ckpt-timing] RESUME_AFTER_SAVE step={step} gap={dt:.2f}s t={time.time():.3f}"
-            )
-            self._save_t0 = None
-        self._batch_t0 = time.time()
-
-    def on_train_batch_end(
-        self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
-        outputs: Any,
-        batch: Any,
-        batch_idx: int,
-    ) -> None:
-        if not bool(getattr(trainer, "is_global_zero", True)):
-            return
-        if self._batch_t0 is None:
-            return
-        dt = time.time() - self._batch_t0
-        self._batch_t0 = None
-        step = int(getattr(trainer, "global_step", 0))
-        if self.batch_log_every > 0 and step > 0 and step % self.batch_log_every == 0:
-            self._emit(f"[ckpt-timing] BATCH_TIME step={step} dt={dt:.2f}s")
-
-    def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        # Peak VRAM for the whole run (throughput/VRAM probes read this line;
-        # torch.cuda.max_memory_allocated is a running high-water mark, so
-        # this captures the worst step even if it wasn't the last one).
-        if not bool(getattr(trainer, "is_global_zero", True)):
-            return
-        if not torch.cuda.is_available():
-            return
-        for i in range(torch.cuda.device_count()):
-            alloc_gb = torch.cuda.max_memory_allocated(i) / 1e9
-            reserved_gb = torch.cuda.max_memory_reserved(i) / 1e9
-            self._emit(f"[ckpt-timing] PEAK_VRAM device={i} allocated_gb={alloc_gb:.2f} reserved_gb={reserved_gb:.2f}")
-
-
 class SnapshotCallback(pl.Callback):
     def __init__(
         self,
@@ -280,21 +190,12 @@ class SnapshotCallback(pl.Callback):
         val_num_samples: int = 16,
         sample_every_n_steps: int = 0,
         skip_initial_samples: bool = False,
-        disable_final_snapshot: bool = False,
     ) -> None:
         super().__init__()
         self.snapshot_batch_size = int(snapshot_batch_size)
         self.val_num_samples = int(val_num_samples)
         self.sample_every_n_steps = int(sample_every_n_steps)
         self.skip_initial_samples = bool(skip_initial_samples)
-        # Escape hatch for datasets that don't implement visualize_sample yet
-        # (e.g. SegviGenEmissive256): on_train_end's snapshot is otherwise
-        # unconditional and will try to save_image() raw SparseTensor /
-        # string batch fields. Fixing that needs a real visualize_sample on
-        # the dataset (follow-up); until then, set this true to skip only
-        # the final snapshot while keeping everything else (mid-training
-        # snapshots via sample_every_n_steps, checkpoints) intact.
-        self.disable_final_snapshot = bool(disable_final_snapshot)
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         if not trainer.is_global_zero:
@@ -323,8 +224,6 @@ class SnapshotCallback(pl.Callback):
 
     def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         if not trainer.is_global_zero:
-            return
-        if self.disable_final_snapshot:
             return
         if hasattr(pl_module, "snapshot"):
             pl_module.snapshot(suffix="final", num_samples=self.val_num_samples, batch_size=self.snapshot_batch_size)
