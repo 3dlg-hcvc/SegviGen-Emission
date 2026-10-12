@@ -31,7 +31,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
 - [x] 8. Our modules (per D13)
 - [x] 9. Coverage run (no code change)
-- [ ] 10. An inference path in this repo (per D18; the rescore needs Dongchen's go)
+- [x] 10. An inference path in this repo (per D18; the remade dumps stand in for the rescore)
 - [x] 11. The chain scripts in `scripts_segvigen/`
 - [x] 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
 - [x] 13. Environment files
@@ -519,7 +519,10 @@ or more, XOR ≤ 5 below, coordinate-set difference ≤ 0.5%); then the five-see
 
 **Instructions:**
 
-**Result:**
+**Result:** `data_toolkit/predict_emission_mask_voxels.py`; its `decode_as_published` runs the stock decoders as the chain's
+vendored copy did (fp16 after `from_latent`, no fallback child): the whole gap. A40, Kevin's env: 1,816 published test dumps remade (paper
+seeds 0–3, release 0–4), byte-identical but for the 3 smallest shapes per test set, where the published chain does not repeat itself
+(gate README § 4); paper seed 4 (RTX 6000 Ada) unchecked. No rescore: the remade dumps carry the published numbers.
 
 ### 11. The chain scripts in `scripts_segvigen/`
 

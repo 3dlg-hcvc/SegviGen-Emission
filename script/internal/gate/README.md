@@ -56,3 +56,20 @@ per validation the metrics and the EMA sum; `summarize_ckpt.py` records every sa
   resume 74/74 identical between two runs, so the pass bar is identity. About 4 min per run. Baselines
   `~/segvigen_refactor/out/train_l40s_det_pre-refactor_{fresh,resume,resume_paper}_run1` (copied to
   `C/star2_out/`). The 24 GB 4090s are not used for this check.
+
+## 4. Predictor check (step 10)
+
+`star2/native_predict.sbatch <tree tgz> <name> kevin|ours` runs `data_toolkit/predict_emission_mask_voxels.py` on the
+published-chain gate's shapes (5 paper, 20 release, seed 0). `star2/native_full.sbatch <tree tgz> <name> paper|release
+<seed>` remakes one whole published test-set dump (paper 204 shapes, release 200; masks and mask × albedo) on the card
+that made it and compares it with `compare_masks.py --identical`. `star2/small_shapes.sbatch` runs the published chain
+and the predictor twice each on the three smallest test shapes and a control.
+
+- Tree `native4` (the step-10 predictor), A40, Kevin's env: paper seeds 0–3 and release seeds 0–4 (1,816 dumps, masks
+  and mask × albedo) byte-identical except the three smallest shapes of each test set (`3c2165d6`, `93e02c90`, and
+  `67055b9d` or `1f2044e5`; under 10,000 decoded voxels), which pass the 2026-09-16 bars.
+- On those shapes the published chain does not repeat itself: two runs of it differ from each other and from the
+  published dumps as much as the predictor does, and the control (`889cdabc`, 10,628 voxels) is identical in every
+  run (`C/star2_out/diag_small/`). Each run autotunes 5–7 flex_gemm kernels live, by timing: the likely cause.
+- Paper seed 4 was made on an RTX 6000 Ada; Solar's only one (cs-bd-01) fails torch's CUDA initialization
+  (2026-10-12), so that seed is unchecked.

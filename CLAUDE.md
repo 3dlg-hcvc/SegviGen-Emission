@@ -18,6 +18,7 @@ shows ours. Commands for users: `README.md`. Parent repo context: `../AGENTS.md`
 | `trellis2/trainers/lightgen_hooks.py` | our training hooks, the same file as TRELLIS2's plus the peak-VRAM line and `disable_final_snapshot` |
 | `configs/gen/segvigen_emissive_256_release.yaml` | the release run's config (its data locations are set by the launcher or `train.sh`) |
 | `data_toolkit/{dual_grid_from_glb,encode_shape_from_dual_grid,encode_pbr_from_voxels}.py` | input producers from the `lightgen` branch |
+| `data_toolkit/predict_emission_mask_voxels.py` | the predictor: emission masks (and mask × albedo) from a Lightning checkpoint or a bridged file, the published sampler, seed rule and dump layout |
 | `scripts_segvigen/` | the lane's producers (`build_output_tex_latents_256.py`, `rekey_full_seg.py`, `newdata/`), the checkpoint bridge (`unrekey_for_eval.py`, `ckpt_step.py`), and `live_eval_one.py` / `live_eval_thumbs.py`, which the published dump chain imports |
 | `script/lightgenbench/` | entry points for LightgenBench users |
 | `script/internal/{alliance,star2}/` | the release run's launcher, snapshot sidecar and input jobs |
@@ -55,7 +56,9 @@ Every published dump came from the parent's `evaluation/newdata_eval/dump_segvig
 file, in Kevin's jupiter miniforge env: paper seeds 0–3 on A40, seed 4 on an RTX 6000 Ada; every release dump on A40.
 12 Euler steps, guidance 1.0, interval [0.6, 0.9], rescale_t 3.0; per-shape seed
 `seed * 1000003 + int(sid[:8], 16) % 100000 + k`; output `<out>/draw<k>/<sid>.npz` (`coords` int16, `pred` float16).
-On an A40 in that env, this tree reproduces those dumps byte for byte (`script/internal/gate/`).
+On an A40 in that env, this tree's copy of that chain and its own predictor reproduce those dumps byte for byte, except
+on the three smallest shapes of each test set, where the chain does not repeat itself from run to run
+(`script/internal/gate/README.md` § 4).
 
 ## Environments that run this code
 
@@ -86,8 +89,10 @@ be bit-identical under the bf16 autocast; fp16 measured a 0.014 % relative loss 
 
 - A `step<N>-<val/loss>.ckpt` file holds step N's weights under the previous validation's loss (top-k fires on the
   step trigger with the last logged metric), in both runs; select by the snapshots and the IoU, never by that name.
-- The stock TRELLIS.2-4B decoders load with fp16 blocks, and this package's decoder feeds an fp32 latent to a fp16
-  subdivision head uncast: run them after `convert_to_fp32()`.
+- This package's decoders (upstream TRELLIS.2-lightning) are not the copy the published chain vendored: they keep the
+  latent's fp32 after `from_latent`, which the fp16 subdivision head of the stock TRELLIS.2-4B shape decoder rejects,
+  and give a voxel without a positive subdivision logit one child. The predictor's `decode_as_published` restores the
+  vendored behavior per decoder instance; `convert_to_fp32()` also runs but changes the predictions.
 - `train.py` sets no global seed; two runs differ from the first backward step unless flash-attn's backward runs in its
   deterministic mode (the training check does this through its `sitecustomize.py`).
 - Kevin's env has no lightning; `~/envs/trellis2` cannot load BiRefNet (route 3 of the conditioning).
