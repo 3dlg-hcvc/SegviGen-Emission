@@ -36,7 +36,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
 - [x] 13. Environment files
 - [x] 14. Release layer: generic entry points for LightgenBench users
-- [ ] 15. Docs
+- [x] 15. Docs
 - [ ] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 - [ ] 17. Cut-over (per D8)
 
@@ -628,13 +628,13 @@ One doc of record, keeping upstream's attribution and citation (`README.md`).
   guide, wrong for this repo), `BLACKWELL.md` (its facts into the doc), `data_toolkit/README.md`; the
   two runs, the checkpoints of record with hashes, the chain, what the published numbers ran on. The
   2026-09-16 spec's doc outline is a source for content, not taken whole.
-- [ ] The release commands (step 14).
+- [x] The release commands (step 14).
 
 **Instructions:**
 
 **Result:** Part 1 (this commit): `CLAUDE.md` is the doc of record (ours, the two runs and their checkpoints, the published chain,
 the environments with `BLACKWELL.md`'s facts, traps); `README.md` gets a SegviGen-Emission section on top (the LightgenBench
-commands, credits) with upstream's below; `BLACKWELL.md` goes. The prediction command waits for step 10.
+commands, credits) with upstream's below; `BLACKWELL.md` goes. Part 2: the README's prediction section (`predict.sh`, the evaluator call).
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 

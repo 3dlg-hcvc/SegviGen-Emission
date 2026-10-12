@@ -21,7 +21,18 @@ bash script/lightgenbench/get_init.sh <inputs_dir>/full_seg_rekeyed.pt
 bash script/lightgenbench/train.sh <inputs_dir> <inputs_dir>/full_seg_rekeyed.pt outputs/segvigen_lightgenbench 4 12
 ```
 
-Prediction on the release test split: coming with the native predictor.
+## Prediction on LightgenBench
+
+```bash
+# emission masks on the test split, seeds 0-4 as the release was scored (one GPU); any checkpoint in ckpts/ works
+bash script/lightgenbench/predict.sh <inputs_dir> outputs/segvigen_lightgenbench/config.yaml \
+  outputs/segvigen_lightgenbench/ckpts/<checkpoint>.ckpt predictions/segvigen_lightgenbench
+```
+
+Each seed writes `seed<N>/mask/draw0/<uuid>.npz` (the predicted mask on the 256 grid) and `seed<N>/ma/draw0/` (mask ×
+the asset's albedo). The LightGen repository's point-sampled evaluator (`evaluation/pointsampled/pipeline.py --mode eval
+--gt_emission texture_only --voxel_pred_root <dir>`) scores the masks for IoU and the mask × albedo outputs for MAE and
+PSNR. The release run scored step 44,722, picked on the validation split: test IoU 0.1468 ± 0.0083 over the five seeds.
 
 ## Credits
 
