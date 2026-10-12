@@ -1,6 +1,6 @@
 """DINOv3 thumbnail conditioning for the released dataset: <out>/<uuid>/cond_pos.pth.
 
-Same artifact as the paper run's cond_fp16 tree (scripts_segvigen/convert_cond_fp16.py): one bare
+Same artifact as the paper run's cond_fp16 tree (its convert_cond_fp16.py, at tag pre-refactor): one bare
 float16 tensor (1, 1029, 1024) per shape, the DINOv3 ViT-L/16 tokens of the TexVerse thumbnail after
 SegviGen's own preprocessing. The conditioning depends on the thumbnail only, not on the bake, so a
 shape the old runs already embedded keeps its bytes. Per shape, first route that applies:

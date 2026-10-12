@@ -237,7 +237,7 @@ class SegviGenEmissive256(Dataset):
               f"{len(self.sids)} usable (SKIPPED: {n_skip} -- loud by design)")
 
         # Per-sample token count for BalancedResumableSampler. Prefer the
-        # precomputed manifest (scripts_segvigen/build_token_manifest.py writes
+        # precomputed manifest (scripts_segvigen/newdata/verify_and_pack.py writes
         # <emit_dir>/token_counts.json); opening 36k npz headers over NFS at
         # every construction was the other half of the dead-GPU startup cost.
         manifest = {}
