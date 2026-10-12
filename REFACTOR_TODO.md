@@ -29,7 +29,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 5b. Move the kept cluster scripts into `script/internal/`
 - [x] 6. Configs (per D17)
 - [x] 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
-- [ ] 8. Our modules (per D13)
+- [x] 8. Our modules (per D13)
 - [ ] 9. Coverage run (no code change)
 - [ ] 10. An inference path in this repo (per D18; the rescore needs Dongchen's go)
 - [ ] 11. The chain scripts in `scripts_segvigen/`
@@ -469,17 +469,17 @@ chain on A40 (also byte-identical to the published dumps), training check on L40
 
 ### 8. Our modules (per D13)
 
-- [ ] 8a. The 512 lane's dataset `trellis2/datasets/segvigen_direct.py` (`SegviGenEmissiveDirect`) and
+- [x] 8a. The 512 lane's dataset `trellis2/datasets/segvigen_direct.py` (`SegviGenEmissiveDirect`) and
   its registry line (`datasets/__init__.py:22`). First, because it imports `_sparse_collate` from
   `lightgen_slat` (`segvigen_direct.py:45`). Live-code subset.
-- [ ] 8b. The dataset helpers. `segvigen_256.py` imports `_build_parquet_samples`, `_read_npz_as_sparse`
+- [x] 8b. The dataset helpers. `segvigen_256.py` imports `_build_parquet_samples`, `_read_npz_as_sparse`
   and `_sparse_collate` from the `lightgen` branch's `trellis2/datasets/lightgen_slat.py`
   (`segvigen_256.py:46`; defined at `lightgen_slat.py:138,78,95`), and `_build_parquet_samples` calls
   `_apply_split_indices` (`:180`, called at `:175`) and reads `_DEFAULT_SPLIT_JSONS` (`:129`). The four
   functions and the constant move verbatim into `segvigen_256.py`, then `lightgen_slat.py` (its
   `LightGen*` classes at `:210,361`, used by neither run) and its registry lines
   (`datasets/__init__.py:18-21,53`) go. Full live-code gate and the training check.
-- [ ] 8c. Our trainers used by neither run: `trellis2/trainers/vae/emission_{vae,pbr_finetune,pbr_conditional}.py`,
+- [x] 8c. Our trainers used by neither run: `trellis2/trainers/vae/emission_{vae,pbr_finetune,pbr_conditional}.py`,
   `trellis2/utils/model_surgery.py`, their `TRAINER_MAP` entries (`train.py:46-48`; `train.py` imports
   every map entry at load) and registry lines, and `data_toolkit/test_emission_vae_resume.py`.
   Training check.
@@ -488,7 +488,9 @@ chain on A40 (also byte-identical to the published dumps), training check on L40
 
 **Instructions:**
 
-**Result:**
+**Result:** 8a `e653a13` (512-lane dataset), 8b `c2fcc59` (helpers moved verbatim into `segvigen_256.py`, syntax trees
+identical; `lightgen_slat.py` gone), 8c (the three `Emission*` trainers, `model_surgery.py`, their test and map lines). Every
+sub-step: live-code gate identical (8b full: 183/183, 200/200), training check fresh/resume/resume_paper identical.
 
 ### 9. Coverage run (no code change)
 
