@@ -1,3 +1,38 @@
+# SegviGen-Emission
+
+The SegviGen-Emission baseline of LightGen (emission textures for 3D objects): SegviGen's 3D segmentation model,
+finetuned to predict which surface voxels of a shape emit light, from its geometry, its PBR material and a
+thumbnail. It is built on TRELLIS.2 (its structured latents, encoders and decoders); upstream's README follows below.
+
+## Training on LightgenBench
+
+The released dataset is [3dlg-hcvc/LightgenBench](https://huggingface.co/datasets/3dlg-hcvc/LightgenBench). Its
+geometry comes from the TexVerse GLBs, so the input step also needs TexVerse and a checkout of the LightGen
+repository (whose mesh loader built the release). Environment: TRELLIS.2's (`setup.sh`: Python 3.10, torch 2.6 +
+CUDA 12.4, flash-attn, flex_gemm, o_voxel) with lightning 2.6; the conditioning step needs a transformers that loads
+BiRefNet (4.57 does, 5.1 does not). `PYTHON=` selects the interpreter for each script.
+
+```bash
+# 1. the inputs: dual grid, shape and PBR latents, emission-mask latents, DINOv3 conditioning (one GPU, resumable)
+bash script/lightgenbench/prepare_inputs.sh <release_dir> <texverse_metadata.parquet> <texverse_glb_root> <lightgen_root> <inputs_dir>
+# 2. the init: SegviGen's full_seg checkpoint, rekeyed
+bash script/lightgenbench/get_init.sh <inputs_dir>/full_seg_rekeyed.pt
+# 3. training: the release recipe (50,000 steps, effective batch 48), here 4 GPUs x 12; rerun to resume
+bash script/lightgenbench/train.sh <inputs_dir> <inputs_dir>/full_seg_rekeyed.pt outputs/segvigen_lightgenbench 4 12
+```
+
+Prediction on the release test split: coming with the native predictor.
+
+## Credits
+
+SegviGen (MIT License, Copyright (c) 2026 Lin Li): the model design, the `full_seg` checkpoint
+(Hugging Face `fenghora/SegviGen`) and the thumbnail preprocessing in `scripts_segvigen/newdata/thumbnail_cond.py`.
+TRELLIS.2 (MIT): everything upstream; cite it as below.
+
+---
+
+*Upstream TRELLIS.2 README:*
+
 ![](assets/teaser.webp)
 
 To prepare datasets locally, place data under `datasets/` (or pass an explicit dataset path/object via `--data_dir` during training).

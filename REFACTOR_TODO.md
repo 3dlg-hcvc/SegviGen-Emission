@@ -611,7 +611,7 @@ step 15.
 
 **Instructions:**
 
-**Result:** Part 1 `<this commit>`: `script/lightgenbench/{prepare_inputs,get_init,train}.sh`; the release config's two jupiter
+**Result:** Part 1 `681cbfd`: `script/lightgenbench/{prepare_inputs,get_init,train}.sh`; the release config's two jupiter
 `cond_search_dirs` go. On a 4-shape mini release (Solar L40S): dual grids byte-identical to jupiter's, latents within 3.4e-3, route-3
 conditioning within 6e-4 mean, init identical (640/640), `train.sh` dry run trains a step. Part 2 (inference) waits for step 10.
 
@@ -619,7 +619,7 @@ conditioning within 6e-4 mean, init identical (640/640), `train.sh` dry run trai
 
 One doc of record, keeping upstream's attribution and citation (`README.md`).
 
-- [ ] Inside: `README.md` (upstream's), `CLAUDE.md` (today the `lightgen` branch's TRELLIS.2-Emission
+- [x] Inside: `README.md` (upstream's), `CLAUDE.md` (today the `lightgen` branch's TRELLIS.2-Emission
   guide, wrong for this repo), `BLACKWELL.md` (its facts into the doc), `data_toolkit/README.md`; the
   two runs, the checkpoints of record with hashes, the chain, what the published numbers ran on. The
   2026-09-16 spec's doc outline is a source for content, not taken whole.
@@ -627,7 +627,9 @@ One doc of record, keeping upstream's attribution and citation (`README.md`).
 
 **Instructions:**
 
-**Result:**
+**Result:** Part 1 (this commit): `CLAUDE.md` is the doc of record (ours, the two runs and their checkpoints, the published chain,
+the environments with `BLACKWELL.md`'s facts, traps); `README.md` gets a SegviGen-Emission section on top (the LightgenBench
+commands, credits) with upstream's below; `BLACKWELL.md` goes. The prediction command waits for step 10.
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 
