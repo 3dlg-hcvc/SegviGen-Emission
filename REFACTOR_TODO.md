@@ -32,7 +32,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 8. Our modules (per D13)
 - [x] 9. Coverage run (no code change)
 - [ ] 10. An inference path in this repo (per D18; the rescore needs Dongchen's go)
-- [ ] 11. The chain scripts in `scripts_segvigen/`
+- [x] 11. The chain scripts in `scripts_segvigen/`
 - [ ] 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
 - [ ] 13. Environment files
 - [ ] 14. Release layer: generic entry points for LightgenBench users
@@ -504,7 +504,7 @@ switches (`ATTN_BACKEND`, `SPARSE_ATTN_BACKEND`, `FLEX_GEMM_*`).
 
 **Result:** At `da9ecd1` (training fresh/resume/resume_paper, published chain, live-code gate on 5+5 shapes): 445/840 of our
 executable lines ran; report `C/coverage/step9/report.txt`. Not run: wandb paths, the image-encoder path, `pos_weight` (D6),
-`live_eval_one.py`'s own CLI, timing branches. The release producers were not imported: step 11 runs and traces them.
+`live_eval_one.py`'s own CLI, timing branches. The release producers were not imported; step 11 ran the two it changed (untraced).
 
 ### 10. An inference path in this repo (per D18; needs Dongchen's go)
 
@@ -523,25 +523,27 @@ or more, XOR ≤ 5 below, coordinate-set difference ≤ 0.5%); then the five-see
 
 ### 11. The chain scripts in `scripts_segvigen/`
 
-- [ ] Release producers: `newdata/{build_metadata,build_dual_grid,build_cond_tree,verify_and_pack}.py`,
+- [x] Release producers: `newdata/{build_metadata,build_dual_grid,build_cond_tree,verify_and_pack}.py`,
   `build_output_tex_latents_256.py` (the emit stage; hardcoded paths `:61,81,83`), `rekey_full_seg.py`
   (the init, both runs), `build_token_manifest.py` and `convert_cond_fp16.py` (paper producers; the
   release reused 30,102 of the paper's conditioning files: jupiter
   `datasets/dataset_release_latents/README.md:43`): keep or delete
   after checking who calls each.
-- [ ] The bridge and eval scripts of Keep stable 4–5 keep their paths until step 10 or 17.
-- [ ] Hardcoded paths and dead branches; `build_cond_tree.py`'s route 3 into the original SegviGen
+- [x] The bridge and eval scripts of Keep stable 4–5 keep their paths until step 10 or 17.
+- [x] Hardcoded paths and dead branches; `build_cond_tree.py`'s route 3 into the original SegviGen
   tree (D19); the parent-repo imports: `newdata_dual_grid.sbatch:20-21`
   (`data_processing.data_preparation.config`) and `build_dual_grid.py:66-70`
   (`data_processing.data_preparation.{contract,loader}`, `utils.glb_io`).
-- [ ] Placement: `scripts_segvigen/` → `data_toolkit/` beside upstream's producers, or keep the folder
+- [x] Placement: `scripts_segvigen/` → `data_toolkit/` beside upstream's producers, or keep the folder
   (decided here, D13).
 - Check: each producer on a few release shapes before and after, outputs compared byte for byte, and
   against jupiter `datasets/dataset_release_latents/`.
 
 **Instructions:**
 
-**Result:**
+**Result:** 11a `9d26e84` (paper producers `convert_cond_fp16.py`, `build_token_manifest.py`), 11b `68b2099` (emit stage: release
+mode only, byte-identical on 5 shapes), 11c (route 3 on this repo's code via `newdata/thumbnail_cond.py`, MIT notice kept; paper roots
+optional; 11 shapes byte-identical old vs new in Kevin's env). The folder stays `scripts_segvigen/`. Step 14: the dual grid imports the parent repo.
 
 ### 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
 

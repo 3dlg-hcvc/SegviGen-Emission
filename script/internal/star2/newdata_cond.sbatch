@@ -1,7 +1,8 @@
 #!/bin/bash
 # Thumbnail conditioning of the released dataset, the two I/O routes (reuse = byte copy of the paper run's fp16
 # file, convert = fp32 -> fp16) on a Solar CPU allocation, <workers> rank processes. The build route needs a GPU
-# and SegviGen's own env; see scripts_segvigen/newdata/build_cond_tree.py.
+# and an env whose transformers loads BiRefNet (the release's ran in Kevin's jupiter miniforge env); see
+# scripts_segvigen/newdata/build_cond_tree.py.
 #
 #   sbatch -w <node> --cpus-per-task=<workers> --mem=32G --time=04:00:00 --job-name=sv_cond \
 #     --output=<latents root>/_logs/%x-%j.log script/internal/star2/newdata_cond.sbatch <code root> <latents root> <workers>

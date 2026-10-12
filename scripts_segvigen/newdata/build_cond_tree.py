@@ -9,21 +9,21 @@ shape the old runs already embedded keeps its bytes. Per shape, first route that
   2. convert  <dataset_direct>/<split>/<uuid>/{cond_pos,cond}.pth      -> the fp32 tensor cast to fp16
   3. build    neither                                                  -> img_to_cond on
               <release>/<uuid>/thumbnail.png (a byte copy of the TexVerse thumbnail); if SegviGen's
-              preprocessing raises, the documented repair variant of build_cond_thumbnail.py
+              preprocessing raises, its repair variant (img_to_cond_repair)
 
-Route 3 imports img_to_cond, BiRefNet and DinoV3FeatureExtractor from the ORIGINAL SegviGen tree
-(--segvigen_repo), the code that produced every existing conditioning file; nothing of it is
-reimplemented here. Never writes zeros: a shape with no usable thumbnail is listed and left out.
+Routes 1 and 2 need the paper run's trees (--paper_fp16_root, --dataset_direct); without them every shape
+takes route 3. Route 3 runs SegviGen's own preprocessing, copied verbatim into thumbnail_cond.py beside
+this file, on this repo's BiRefNet and DinoV3FeatureExtractor. Never writes zeros: a shape with no usable
+thumbnail is listed and left out.
 
 Resumable (an existing output is skipped), atomic writes, a JSON report per rank.
 
 Usage:
     python scripts_segvigen/newdata/build_cond_tree.py --sid_list <meta>/release_all.txt \
         --release <dataset_release> --out <latents root>/segvigen_cond_fp16 \
-        --segvigen_repo <lightgen>/SegviGen-emissive [--routes reuse,convert | --routes build]
+        [--paper_fp16_root <dir> --dataset_direct <dir>] [--routes reuse,convert | --routes build]
 """
 import argparse
-import importlib.util
 import json
 import os
 import shutil
@@ -33,8 +33,6 @@ import traceback
 
 import torch
 
-PAPER_FP16 = "/cs/3dlg-falas/project/omages/lightgen/segvigen_emissive/outputs/cond_fp16"
-DATASET_DIRECT = "/cs/3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct"
 DIRECT_SPLITS = ("train_72k", "val_72k", "test_72k")
 SHAPE = (1, 1029, 1024)
 
@@ -54,23 +52,19 @@ def _save(t: torch.Tensor, dest: str) -> None:
 
 
 class Builder:
-    """SegviGen's own thumbnail -> cond path, loaded on first use."""
+    """SegviGen's own thumbnail -> cond path (thumbnail_cond.py), loaded on first use."""
 
-    def __init__(self, segvigen_repo: str):
-        self.repo = os.path.abspath(segvigen_repo)
+    def __init__(self):
         self.ready = False
 
     def _load(self):
-        sys.path.insert(0, os.path.join(self.repo, "data_toolkit"))
-        sys.path.insert(0, self.repo)
-        from img_to_cond import img_to_cond
+        here = os.path.dirname(os.path.abspath(__file__))
+        sys.path.insert(0, os.path.abspath(os.path.join(here, "..", "..")))   # this repo's trellis2
+        sys.path.insert(0, here)
+        from thumbnail_cond import img_to_cond, img_to_cond_repair
         from trellis2.pipelines.rembg import BiRefNet
         from trellis2.modules.image_feature_extractor import DinoV3FeatureExtractor
-        spec = importlib.util.spec_from_file_location(
-            "build_cond_thumbnail", os.path.join(self.repo, "emissive", "data_prep", "build_cond_thumbnail.py"))
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        self.img_to_cond, self.img_to_cond_repair = img_to_cond, mod.img_to_cond_repair
+        self.img_to_cond, self.img_to_cond_repair = img_to_cond, img_to_cond_repair
         self.rembg = BiRefNet(model_name="briaai/RMBG-2.0")
         self.rembg.cuda()
         self.dino = DinoV3FeatureExtractor(model_name="facebook/dinov3-vitl16-pretrain-lvd1689m")
@@ -96,9 +90,8 @@ def main() -> None:
     ap.add_argument("--sid_list", required=True)
     ap.add_argument("--release", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--segvigen_repo", default=None, help="original SegviGen tree; needed by the build route")
-    ap.add_argument("--paper_fp16_root", default=PAPER_FP16)
-    ap.add_argument("--dataset_direct", default=DATASET_DIRECT)
+    ap.add_argument("--paper_fp16_root", default=None, help="the paper run's fp16 conditioning tree (route 1)")
+    ap.add_argument("--dataset_direct", default=None, help="the paper's dataset_direct tree (route 2)")
     ap.add_argument("--routes", default="reuse,convert,build")
     ap.add_argument("--rank", type=int, default=0)
     ap.add_argument("--world_size", type=int, default=1)
@@ -112,15 +105,13 @@ def main() -> None:
     if args.limit:
         sids = sids[:args.limit]
     direct = {}   # every route needs it: build must not redo a shape that convert owns
-    for sp in DIRECT_SPLITS:   # one listing per split, not a stat per shape
+    for sp in (DIRECT_SPLITS if args.dataset_direct else ()):   # one listing per split, not a stat per shape
         try:
             for name in os.listdir(os.path.join(args.dataset_direct, sp)):
                 direct.setdefault(name, sp)
         except FileNotFoundError:
             print(f"[cond] no {sp} under {args.dataset_direct}", flush=True)
-    builder = Builder(args.segvigen_repo) if "build" in routes else None
-    if builder is not None:
-        assert args.segvigen_repo, "--routes build needs --segvigen_repo"
+    builder = Builder() if "build" in routes else None
 
     n = {"cached": 0, "reuse": 0, "convert": 0, "build": 0, "left": 0, "failed": 0}
     repaired, failed, no_thumb = {}, [], []
@@ -132,13 +123,13 @@ def main() -> None:
             continue
         try:
             # the route is decided by the files that exist, then run only if this call was asked for it
-            paper = os.path.join(args.paper_fp16_root, sid, "cond_pos.pth")
+            paper = os.path.join(args.paper_fp16_root, sid, "cond_pos.pth") if args.paper_fp16_root else None
             src = None
             if sid in direct:
                 d = os.path.join(args.dataset_direct, direct[sid], sid)
                 src = next((q for q in (os.path.join(d, "cond_pos.pth"), os.path.join(d, "cond.pth"))
                             if os.path.exists(q)), None)
-            route = "reuse" if os.path.exists(paper) else "convert" if src else "build"
+            route = "reuse" if paper and os.path.exists(paper) else "convert" if src else "build"
             if route not in routes:
                 n["left"] += 1
             elif route == "reuse":
