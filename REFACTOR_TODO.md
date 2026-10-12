@@ -22,7 +22,7 @@ path. It also predates the release retrain, so its lists would move live release
 Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates and baselines).
 
 - [x] 1. Housekeeping (tag and worktree done; the paper checkpoint onto jupiter, D21)
-- [ ] 2. Dead root files, one-off scripts and the live-evaluation loop
+- [x] 2. Dead root files, one-off scripts and the live-evaluation loop
 - [ ] 3. `archive/`, `docs/`, `reports/`, stale ignore rules
 - [ ] 4. `blender_packages/` (upstream's demo material stays, D12)
 - [ ] 5. Launchers (per D17)
@@ -304,18 +304,18 @@ Dongchen's answers of 2026-10-11 (all answered except D10):
 
 Not used by either run's training, data or published inference.
 
-- [ ] Root: the 10 PNGs of the `lightgen` branch (`emission_*.png`, `vae_channel_vis.png`;
+- [x] Root: the 10 PNGs of the `lightgen` branch (`emission_*.png`, `vae_channel_vis.png`;
   `.gitignore:22-23` matches some).
-- [ ] Kevin's probes and smokes: root `probe_batch`, `probe_bs_venus05`, `probe_bs_venus05_v2`,
+- [x] Kevin's probes and smokes: root `probe_batch`, `probe_bs_venus05`, `probe_bs_venus05_v2`,
   `probe_bs_256_venus05`, `smoke_dit10`, `smoke_resume`, `smoke_segvigen`, `smoke_segvigen_resume`,
   `smoke_256_venus05`, `count_256_split`, `count_256_split_fast`, `run_fp16_check{,2,3}`,
   `run_verify_fp16{,_v2}` (all `.sbatch`); `script/bw/smoke_{gpu,train}_venus05.sbatch`;
   `scripts_segvigen/{check_256_coords_vs_shape,check_cond_fp16_forward,verify_cond_fp16,round_trip_check,_drain_backlog,_submit_cond_ablation,_repair_cond_ablation}.py`.
-- [ ] Kevin's live-evaluation loop (the dashboard, not the published numbers):
+- [x] Kevin's live-evaluation loop (the dashboard, not the published numbers):
   `scripts_segvigen/{live_eval_driver,live_eval_merge,live_eval_slices,submit_eval_chain,rescore_baseline_dump}.py`,
   root `live_eval_{bridge,driver,merge,one,shard}.sbatch`, `rescore_baseline.sbatch`. Kept:
   `live_eval_one.py`, `live_eval_thumbs.py`, `unrekey_for_eval.py`, `ckpt_step.py` (Keep stable 4–5).
-- [ ] `data_toolkit/`, the `lightgen` branch's 63 added files except the three release producers
+- [x] `data_toolkit/`, the `lightgen` branch's 63 added files except the three release producers
   `dual_grid_from_glb.py`, `encode_shape_from_dual_grid.py`, `encode_pbr_from_voxels.py`
   (`script/star2/newdata_encode.sbatch:28,30`, `scripts_segvigen/newdata/build_dual_grid.py:43`),
   `test_checkpoint_cadence.py` (it tests the kept `build_checkpoint_callback`) and
@@ -333,14 +333,16 @@ Not used by either run's training, data or published inference.
   `test_emission_vae_e2e.py`, `test_pbr_vae.py`, `test_single_emission_sample.py`,
   `verify_albedo2emission_v3/`, `verify_pbr2emission_v3/`, `vis_emission_vae.py`,
   `viz_uv_{albedo,alignment,gallery}.py`.
-- [ ] `vis/` (5 files, the `lightgen` branch's viewers).
+- [x] `vis/` (5 files, the `lightgen` branch's viewers).
 
 Gate: live-code subset; the published-chain gate (the loop's removal must not touch what
 `live_eval_one.py` imports).
 
 **Instructions:**
 
-**Result:**
+**Result:** 109 files deleted (10 PNGs, 18 one-off launchers, 7 one-off scripts, the live-evaluation loop's 11
+files, 58 `data_toolkit/` files, `vis/`); `CLAUDE.md` replaced by a short interim note (the old guide named the
+deleted files; step 15 writes the doc of record). Live-code gate 20/20 + 20/20 identical; published chain identical.
 
 ### 3. `archive/`, `docs/`, `reports/`, stale ignore rules
 
