@@ -24,7 +24,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 1. Housekeeping (tag and worktree done; the paper checkpoint onto jupiter, D21)
 - [x] 2. Dead root files, one-off scripts and the live-evaluation loop
 - [x] 3. `archive/`, `docs/`, `reports/`, stale ignore rules
-- [ ] 4. `blender_packages/` (upstream's demo material stays, D12)
+- [x] 4. `blender_packages/` (upstream's demo material stays, D12)
 - [ ] 5. Launchers (per D17)
 - [ ] 5b. Move the kept cluster scripts into `script/internal/`
 - [ ] 6. Configs (per D17)
@@ -361,7 +361,7 @@ block and anchors Kevin's `data/` as `/data/` (12 tracked eigen files were match
 
 ### 4. `blender_packages/` (upstream's demo material stays, D12)
 
-- [ ] `blender_packages/` (133 files: Pillow vendored for Blender). Its users are the `lightgen`
+- [x] `blender_packages/` (133 files: Pillow vendored for Blender). Its users are the `lightgen`
   branch's Blender prep (deleted in steps 2 and 5) and upstream's `data_toolkit/dump_pbr.py`, whose
   Blender script prepends the directory to `sys.path` (our edit, D14). Neither run uses Blender; check
   that the script still finds a Pillow without the directory, else keep it or ask (TRELLIS2 deleted
@@ -369,7 +369,8 @@ block and anchors Kevin's `data/` as `/data/` (12 tracked eigen files were match
 
 **Instructions:**
 
-**Result:**
+**Result:** `blender_packages/` (133 files) deleted; `dump_pbr.py`'s path line already checks that the directory
+exists (D14 keeps it) and upstream's `install_pillow.py` route applies, as in TRELLIS2. Live-code gate 20/20 + 20/20.
 
 ### 5. Launchers (per D17)
 
