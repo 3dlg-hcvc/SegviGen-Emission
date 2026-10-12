@@ -10,8 +10,11 @@
 # Rerunning the same command resumes from <output_dir>/ckpts/last.ckpt. WANDB=1 logs to wandb (project LightGen as
 # in the config; set trainer.args.wandb_project with an extra --override). PYTHON selects the interpreter.
 set -euo pipefail
-IN=$(readlink -f "${1:?inputs_dir}"); INIT=$(readlink -f "${2:?init.pt}"); OUT=${3:?output_dir}
-NG=${4:-4}; BS=${5:-12}; shift $(( $# < 5 ? $# : 5 )); [ "${1:-}" = "--" ] && shift
+IN=$(readlink -f "${1:?inputs_dir}"); INIT=$(readlink -f "${2:?init.pt}"); OUT=${3:?output_dir}; shift 3
+NG=4; BS=12
+if [ $# -gt 0 ] && [ "$1" != "--" ]; then NG=$1; shift; fi
+if [ $# -gt 0 ] && [ "$1" != "--" ]; then BS=$1; shift; fi
+if [ $# -gt 0 ]; then [ "$1" = "--" ] || { echo "train.sh: expected -- before extra train.py arguments, got $1" >&2; exit 2; }; shift; fi
 PY=${PYTHON:-python}
 REPO=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
 mkdir -p "$OUT"; OUT=$(readlink -f "$OUT")

@@ -16,7 +16,7 @@
 # BiRefNet); PYTHON selects the interpreter (default python). Every stage skips what already exists, so a stopped run
 # resumes. For the whole release, run the per-shape stages on several GPUs: each takes --rank/--world_size.
 set -euo pipefail
-REL=$(readlink -f "${1:?release_dir}"); META=${2:?texverse_metadata}; GLB=${3:?texverse_glb_root}
+REL=$(readlink -f "${1:?release_dir}"); META=$(readlink -f "${2:?texverse_metadata}"); GLB=$(readlink -f "${3:?texverse_glb_root}")
 LG=$(readlink -f "${4:?lightgen_root}"); OUT=${5:?out_dir}; W=${6:-8}
 PY=${PYTHON:-python}
 REPO=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
