@@ -31,8 +31,8 @@ would silently mis-scale the target: that block belongs to a different
 
 Every npz's coords are expected on the SAME sparse grid (all three are
 downsampled from the same occupied 256^3 voxel set); asserted per-sample at
-load time, and pre-verified at build time for a coord-check sample (see
-scripts_segvigen/check_256_coords_vs_shape.py, 13/13 match on val_72k).
+load time, and pre-verified at build time for a coord-check sample (the one-off
+scripts_segvigen/check_256_coords_vs_shape.py, at tag pre-refactor: 13/13 match on val_72k).
 """
 from __future__ import annotations
 
