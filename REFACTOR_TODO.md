@@ -34,7 +34,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [ ] 10. An inference path in this repo (per D18; the rescore needs Dongchen's go)
 - [x] 11. The chain scripts in `scripts_segvigen/`
 - [x] 12. Our hooks in upstream's `train.py`, `basic.py`, `callbacks.py`
-- [ ] 13. Environment files
+- [x] 13. Environment files
 - [ ] 14. Release layer: generic entry points for LightgenBench users
 - [ ] 15. Docs
 - [ ] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
@@ -568,19 +568,20 @@ identical in all three modes (also the `[train]`/`[val]`/`[ckpt-timing]` lines);
 
 ### 13. Environment files
 
-- [ ] `setup.sh` (upstream's pins, torch 2.6 + CUDA 12.4; our one change: the `libjpeg-dev` line
+- [x] `setup.sh` (upstream's pins, torch 2.6 + CUDA 12.4; our one change: the `libjpeg-dev` line
   commented out); no requirements file exists.
-- [ ] The envs that ran: `segvigen-bw` (the paper training: cs-venus-05 Blackwell, Kevin's
+- [x] The envs that ran: `segvigen-bw` (the paper training: cs-venus-05 Blackwell, Kevin's
   `/localscratch/xya120/miniforge3`, built by `script/bw/bootstrap_segvigen_bw.sh:46-101`; facts in
   `BLACKWELL.md`); the Alliance venv `~/scratch/TRELLIS.2-lightning/env` (the release training, built
   by TRELLIS2's `script/alliance/build_env.sh`); Solar `~/envs/trellis2` (the release producers; sm_89
   for flex_gemm); Kevin's jupiter miniforge `trellis2` (every published dump). One description that
   matches what runs.
-- [ ] If a dependency goes, update the import probes in the launchers.
+- [x] If a dependency goes, update the import probes in the launchers.
 
 **Instructions:**
 
-**Result:**
+**Result:** `CLAUDE.md` lists the five envs that ran this code, their versions and what ran in each, and what every env needs
+(Kevin's env has no lightning: inference and conditioning only). No env file changed; no import probe needed an update.
 
 ### 14. Release layer: generic entry points for LightgenBench users
 
