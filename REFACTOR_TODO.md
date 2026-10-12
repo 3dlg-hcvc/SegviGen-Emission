@@ -638,7 +638,7 @@ commands, credits) with upstream's below; `BLACKWELL.md` goes. Part 2: the READM
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 
-- [ ] The full live-code gate, the published-chain gate and the training check on the branch head,
+- [x] The full live-code gate, the published-chain gate and the training check on the branch head,
   against the `pre-refactor` baselines; the tests.
 - [ ] Ask Dongchen to review the branch (`git diff pre-refactor`, the plan's Results); stop until he
   gives the go.
@@ -661,7 +661,9 @@ commands, credits) with upstream's below; `BLACKWELL.md` goes. Part 2: the READM
 
 **Instructions:**
 
-**Result:**
+**Result:** Checks: at `5697d18` all identical (live 183/183 and 200/200, published chain 5/5 and 20/20, bridge 640/640, training
+145/145, 74/74, 74/74); from there to the head only new files, `script/lightgenbench/` and docs changed, and the live-code gate at
+`dae79fa` is identical (20/20, 20/20). Step 10's checks cover the predictor. No test suite exists. Waiting for Dongchen's review.
 
 ### 17. Cut-over (per D8)
 
