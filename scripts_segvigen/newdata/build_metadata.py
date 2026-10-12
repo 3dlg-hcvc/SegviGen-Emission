@@ -1,7 +1,7 @@
 """Index files of the released dataset (3dlg-hcvc/LightgenBench) for SegviGenEmissive256.
 
 The dataset class reads a parquet indexed by shape id and a split json of row positions
-(trellis2/datasets/lightgen_slat.py, _build_parquet_samples). The release ships
+(trellis2/datasets/segvigen_256.py, _build_parquet_samples). The release ships
 splits.json = {"train": [uuid, ...], "val": [...], "test": [...]}; this writes
 
     <out>/release_index.parquet   one row per shape, index = uuid, column `split`

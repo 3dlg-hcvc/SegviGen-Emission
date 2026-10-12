@@ -15,9 +15,6 @@ __attributes = {
     'SLatPbr': 'structured_latent_svpbr',
     'ImageConditionedSLatPbr': 'structured_latent_svpbr',
 
-    # LightGen: emission generation in voxel space (TRELLIS.2-native)
-    'LightGenSLatEmission': 'lightgen_slat',
-    'LightGenSLatEmissionLatent': 'lightgen_slat',
     'SegviGenEmissive256': 'segvigen_256',
 }
 
@@ -48,5 +45,4 @@ if __name__ == '__main__':
     from .structured_latent import SLat, ImageConditionedSLat
     from .structured_latent_shape import SLatShape, ImageConditionedSLatShape
     from .structured_latent_svpbr import SLatPbr, ImageConditionedSLatPbr
-    from .lightgen_slat import LightGenSLatEmission, LightGenSLatEmissionLatent
 
