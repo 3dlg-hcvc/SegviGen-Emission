@@ -18,7 +18,6 @@ __attributes = {
     # LightGen: emission generation in voxel space (TRELLIS.2-native)
     'LightGenSLatEmission': 'lightgen_slat',
     'LightGenSLatEmissionLatent': 'lightgen_slat',
-    'SegviGenEmissiveDirect': 'segvigen_direct',
     'SegviGenEmissive256': 'segvigen_256',
 }
 

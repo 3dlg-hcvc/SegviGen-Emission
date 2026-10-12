@@ -288,7 +288,7 @@ class SnapshotCallback(pl.Callback):
         self.sample_every_n_steps = int(sample_every_n_steps)
         self.skip_initial_samples = bool(skip_initial_samples)
         # Escape hatch for datasets that don't implement visualize_sample yet
-        # (e.g. SegviGenEmissiveDirect): on_train_end's snapshot is otherwise
+        # (e.g. SegviGenEmissive256): on_train_end's snapshot is otherwise
         # unconditional and will try to save_image() raw SparseTensor /
         # string batch fields. Fixing that needs a real visualize_sample on
         # the dataset (follow-up); until then, set this true to skip only

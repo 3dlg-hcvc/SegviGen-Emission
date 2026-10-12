@@ -1,7 +1,7 @@
 """Relocate + halve the precomputed DINOv3 conditioning tensors: jupiter fp32
 cond_pos.pth -> falas 16-bit cond_pos.pth, one flat directory keyed by sid so
-the existing cond_search_dirs mechanism (SegviGenEmissiveDirect,
-SegviGenEmissive256) works unchanged, just with a new search dir prepended.
+the existing cond_search_dirs mechanism (SegviGenEmissive256, and the 512 lane's
+SegviGenEmissiveDirect at tag pre-refactor) works unchanged, just with a new search dir prepended.
 
 Root cause (board lightning_port, 2026-08-26, team-lead's measurement):
 training at ~6s/step with GPUs ~47% idle, gated on data; 90%+ of the bytes
@@ -12,8 +12,8 @@ test). Fix: move cond onto falas, and halve it (fp32->fp16) since the
 reader already upcasts with .float() before use -- AMP casts to bf16 for
 compute anyway, so fp16 storage loses nothing the training run would keep.
 
-Contract (verified against trellis2/datasets/segvigen_direct.py and
-segvigen_256.py's get_instance, both handle it identically):
+Contract (verified against segvigen_256.py's get_instance and the 512 lane's
+segvigen_direct.py at tag pre-refactor, both handle it identically):
     cond_pos.pth is EITHER a bare tensor OR a dict with key "cond".
     Fallback when cond_pos.pth is absent: cond.pth, always a dict with key
     "cond" (the reader does not squeeze/cast anything else out of it here).

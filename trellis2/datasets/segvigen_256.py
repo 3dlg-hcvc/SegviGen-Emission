@@ -5,7 +5,7 @@ fullseg finetune trains on the 256-native voxel grid directly, reusing the
 team's shared production shape+pbr latents (Dongchen's latents_v2 tree, the
 same ones the emission DiT baseline reads) plus OUR new emission-mask npz
 (scripts_segvigen/build_output_tex_latents_256.py, job 8) as the target.
-This REPLACES SegviGenEmissiveDirect's dataset_direct/512 lane for the
+This REPLACES the 512 lane's SegviGenEmissiveDirect (tag pre-refactor) for the
 imminent launch -- do not confuse the two; dataset_direct's own
 output_tex_slat.pth is a different (512-resolution, upsampled) artifact.
 
