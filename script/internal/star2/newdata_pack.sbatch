@@ -3,7 +3,7 @@
 # CPU only; Solar reads jupiter over a faster path than the workstation.
 #
 #   sbatch -w <node> --cpus-per-task=<workers> --mem=64G --time=04:00:00 --job-name=sv_pack \
-#     --output=<latents root>/_logs/%x-%j.log script/star2/newdata_pack.sbatch <code root> <latents root> <workers> [cond shards] [previous usable.txt]
+#     --output=<latents root>/_logs/%x-%j.log script/internal/star2/newdata_pack.sbatch <code root> <latents root> <workers> [cond shards] [previous usable.txt]
 #SBATCH --account=3dlg-hcvc-lab
 #SBATCH --ntasks=1
 set -euo pipefail

@@ -4,7 +4,7 @@
 # The models: and trainer: blocks and both normalization blocks are segvigen_emissive_256.yaml's
 # (the paper run, segvigen_256_bw_6gpu) unchanged: same architecture, init from full_seg, lr 1e-5,
 # unweighted loss, 50k steps, stock TRELLIS.2 pipeline.json stats. What differs:
-#   - every data location is a placeholder the launcher overrides (script/alliance/segvigen_256_release.sh
+#   - every data location is a placeholder the launcher overrides (script/internal/alliance/segvigen_256_release.sh
 #     unpacks the tars into $SLURM_TMPDIR); inputs come from scripts_segvigen/newdata/
 #   - effective batch stays 48: the paper ran 6 GPUs x 8, this lane runs 4 x H100 x 12
 #   - ckpt_last_every_n_steps 755 -> 759 (36,426 train shapes / 48; the launcher sets the real value

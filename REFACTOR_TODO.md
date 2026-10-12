@@ -26,7 +26,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 3. `archive/`, `docs/`, `reports/`, stale ignore rules
 - [x] 4. `blender_packages/` (upstream's demo material stays, D12)
 - [x] 5. Launchers (per D17)
-- [ ] 5b. Move the kept cluster scripts into `script/internal/`
+- [x] 5b. Move the kept cluster scripts into `script/internal/`
 - [ ] 6. Configs (per D17)
 - [x] 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
 - [ ] 8. Our modules (per D13)
@@ -401,7 +401,9 @@ reaches into the parent repo).
 
 **Instructions:**
 
-**Result:**
+**Result:** `script/{alliance,star2}/` → `script/internal/{alliance,star2}/` (6 files, `git mv`); the launcher's three
+sidecar calls, the usage comments and the release config's comment follow; `bash -n` passes, the parsed config is
+unchanged. Parent doc `docs/baselines/segvigen-live-training.md:126-127` goes to step 16's list.
 
 ### 6. Configs (per D17)
 
@@ -631,7 +633,11 @@ One doc of record, keeping upstream's attribution and citation (`README.md`).
   (§ Where the code is), `../docs/status/refactor.md` (the SegviGen-Emission bullet),
   `../docs/status/checkpoints.md`, `../docs/evaluation.md`; a path-scoped rule
   `../.claude/rules/segvigen.md` beside `texgen.md` and `trellis2.md` (propose it).
-- [ ] Outside the repo: the compute-access skill's `hedge.sh` if step 5b moved the release launcher.
+- [ ] Outside the repo: the compute-access skill's `hedge.sh` if step 5b moved the release launcher
+  (step 5b did: the launcher is `script/internal/alliance/segvigen_256_release.sh`; `hedge.sh` takes the path as an
+  argument, so only its callers' notes change).
+- [ ] Parent doc paths after step 5b: `../docs/baselines/segvigen-live-training.md:126-127` names
+  `script/star2/newdata_*.sbatch` and `script/alliance/segvigen_256_release.sh`.
 
 **Instructions:**
 

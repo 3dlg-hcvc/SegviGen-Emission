@@ -4,7 +4,7 @@
 #
 #   sbatch -w <node> --gres=gpu:<type>:1 --cpus-per-task=6 --mem=48G --time=06:00:00 \
 #     --job-name=sv_encode --output=<latents root>/_logs/%x-%j.log \
-#     script/star2/newdata_encode.sbatch <code root> <latents root> <stages> <rank> <world_size> [emit sid list]
+#     script/internal/star2/newdata_encode.sbatch <code root> <latents root> <stages> <rank> <world_size> [emit sid list]
 #
 # The shared trellis2 env (torch 2.6 + cu124) does not run on the Blackwell nodes (cs-venus-05/19/21).
 #SBATCH --account=3dlg-hcvc-lab

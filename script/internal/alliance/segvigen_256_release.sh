@@ -5,8 +5,8 @@
 # grace minute, SIGTERM -> requeue, data unpacked into $SLURM_TMPDIR, weights from a staged offline cache).
 #
 # hedge.sh runs a launcher from ~/scratch/TRELLIS.2-lightning (whose env/ this lane shares), so call it as
-#   hedge.sh submit <run> fir=../segvigen-lightning/script/alliance/segvigen_256_release.sh ...
-# or by hand on a login node:  bash ~/scratch/segvigen-lightning/script/alliance/segvigen_256_release.sh [--dry-run]
+#   hedge.sh submit <run> fir=../segvigen-lightning/script/internal/alliance/segvigen_256_release.sh ...
+# or by hand on a login node:  bash ~/scratch/segvigen-lightning/script/internal/alliance/segvigen_256_release.sh [--dry-run]
 #
 #   env: MAX_STEPS=<n> bounded probe; OUT_SUFFIX=_probe keeps a probe out of the real run's directory (its
 #        last.ckpt and wandb id would otherwise be resumed); WALLTIME=HH:MM:SS (default 24:00:00);
@@ -59,7 +59,7 @@ ${SIGNAL}
 # 25-min lead before the time limit: a 10 GB last.ckpt on Lustre must finish before SIGKILL.
 # The sidecar runs in its own process group so its converter child dies with it (a bare kill of the shell orphans it).
 stop_sidecar() { [ -n "\${SIDE_PID:-}" ] && { kill -TERM -- -\$SIDE_PID 2>/dev/null; wait \$SIDE_PID 2>/dev/null; SIDE_PID=""; }; }
-handle_timeout() { echo "SIGTERM: stopping training gracefully..."; stop_sidecar; [ -n "\${EPOCH_STEPS:-}" ] && bash script/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS flush >> "\$SIDELOG" 2>&1; [ -n "\$TRAIN_PID" ] && kill -0 \$TRAIN_PID 2>/dev/null && { kill -TERM \$TRAIN_PID; wait \$TRAIN_PID; }; scontrol requeue \${SLURM_JOB_ID}; exit 0; }
+handle_timeout() { echo "SIGTERM: stopping training gracefully..."; stop_sidecar; [ -n "\${EPOCH_STEPS:-}" ] && bash script/internal/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS flush >> "\$SIDELOG" 2>&1; [ -n "\$TRAIN_PID" ] && kill -0 \$TRAIN_PID 2>/dev/null && { kill -TERM \$TRAIN_PID; wait \$TRAIN_PID; }; scontrol requeue \${SLURM_JOB_ID}; exit 0; }
 trap 'handle_timeout' SIGTERM
 sleep 60   # hedged submission: a job cancelled in its first minute has cost nothing
 echo "====================================== Job \${SLURM_JOB_NAME} (\${SLURM_JOB_ID}) cluster ${CLUSTER} node \$(hostname) started \$(date) restart=\${SLURM_RESTART_COUNT:-0}"
@@ -85,7 +85,7 @@ export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1; echo "HF_HOME=\$HF_HOME"
 if [ -f \$HOME/.netrc ] && curl -sSI -m 8 https://api.wandb.ai >/dev/null 2>&1; then echo "wandb: online"; else export WANDB_MODE=offline; echo "wandb: OFFLINE (sync later from a login node)"; fi
 if ! ( : > \$HOME/.wtest.\$\$ ) 2>/dev/null; then export TRITON_CACHE_DIR=\$SLURM_TMPDIR/.triton CUDA_CACHE_PATH=\$SLURM_TMPDIR/.nv MPLCONFIGDIR=\$SLURM_TMPDIR/.mpl WANDB_CACHE_DIR=\$SLURM_TMPDIR/.wandb WANDB_CONFIG_DIR=\$SLURM_TMPDIR/.wandb_cfg XDG_CACHE_HOME=\$SLURM_TMPDIR/.cache; echo "HOME read-only: caches redirected to \$SLURM_TMPDIR"; else rm -f \$HOME/.wtest.\$\$; fi
 # one eval-ready weights file per epoch (the paper run kept full 10.5 GB states through an external mirror)
-setsid bash script/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS > "\$SIDELOG" 2>&1 &
+setsid bash script/internal/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS > "\$SIDELOG" 2>&1 &
 SIDE_PID=\$!
 set -o pipefail
 srun python -u train.py \\
@@ -108,7 +108,7 @@ srun python -u train.py \\
 TRAIN_PID=\$!
 wait \$TRAIN_PID; EXIT_CODE=\$?
 stop_sidecar
-bash script/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS once >> "\$SIDELOG" 2>&1
+bash script/internal/alliance/snapshot_sidecar.sh ${OUTPUT_DIR} \$EPOCH_STEPS once >> "\$SIDELOG" 2>&1
 if [ \$EXIT_CODE -ne 0 ]; then
     if [ \${SLURM_RESTART_COUNT:-0} -lt 3 ]; then echo "Training crashed (exit \$EXIT_CODE) at \$(date). Requeueing..."; scontrol requeue \${SLURM_JOB_ID}; exit 0; fi
     echo "Training crashed (exit \$EXIT_CODE); restart cap reached. NOT requeueing."; exit \$EXIT_CODE

@@ -5,7 +5,7 @@
 #
 #   sbatch -w <node> --cpus-per-task=<workers> --mem=<8G per worker or more> --time=04:00:00 \
 #     --job-name=sv_dualgrid --output=<latents root>/_logs/%x-%j.log \
-#     script/star2/newdata_dual_grid.sbatch <code root> <latents root> <workers> <rank_offset> <world_size>
+#     script/internal/star2/newdata_dual_grid.sbatch <code root> <latents root> <workers> <rank_offset> <world_size>
 #
 # A few TexVerse meshes need hundreds of GB in this routine (TRELLIS.2 74k prep, 2026-05); a rank the kernel
 # kills loses the rest of its slice, which a second pass with few workers picks up.

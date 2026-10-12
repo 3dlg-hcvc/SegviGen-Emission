@@ -4,7 +4,7 @@
 # and SegviGen's own env; see scripts_segvigen/newdata/build_cond_tree.py.
 #
 #   sbatch -w <node> --cpus-per-task=<workers> --mem=32G --time=04:00:00 --job-name=sv_cond \
-#     --output=<latents root>/_logs/%x-%j.log script/star2/newdata_cond.sbatch <code root> <latents root> <workers>
+#     --output=<latents root>/_logs/%x-%j.log script/internal/star2/newdata_cond.sbatch <code root> <latents root> <workers>
 #SBATCH --account=3dlg-hcvc-lab
 #SBATCH --ntasks=1
 set -uo pipefail
