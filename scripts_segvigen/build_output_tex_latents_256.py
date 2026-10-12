@@ -1,43 +1,26 @@
-"""256-resolution target-latent build for the SegviGen 256 pilot (job 8/GO
-2026-08-26). Mirrors the 512 lane's build_dataset_direct.py channel-hijack
-convention EXACTLY (segvigen_emissive/emissive/data_prep/build_dataset_direct.py):
-white=emissive / black=non in base_color, metallic=0, roughness=255, alpha=255,
-emission binarized at >1/255 (any nonzero channel) -- but skips the 512 lane's
-dual-grid geometry re-extraction and 256->512 upsample entirely, because at
-256 we use Dongchen's native pbr_voxels_256/emission_voxels_256 coords
-directly (no upsampling needed) and only need the TEX encoder (shape/input-tex
-latents at 256 are shared, already built by Dongchen -- see latents_v2, job 8).
+"""SegviGen-Emission's target latents: the emission mask of each shape through the stock texture encoder.
 
-Per shape:
-  1. read <sid>/pbr_voxels_256/{sid}.vxz and <sid>/emission_voxels_256/{sid}.vxz
-     from the team's read-only voxel tree (see the OVOX_ROOT note below for
-     why this is the real path and not the two symlink chains that dangle
-     on compute nodes) -- asserts identical coords between the two, same as
-     build_dataset_direct.py.
-  2. is_emis = (emissive > 0).any(dim=-1)  (binarize >1/255, any channel)
-  3. out_base_color = white where is_emis else black; out_metallic=0,
-     out_roughness=255, out_alpha=255 (OUT_*_U8 constants, byte-identical to
-     the 512 lane's).
-  4. attr = cat([out_base_color, out_metallic, out_roughness, out_alpha]) / 255
-     * 2 - 1  (same normalization vxz_to_latent_slat.py uses).
-  5. encode with the stock tex_enc_next_dc_f16c32_fp16 encoder (the SAME
-     pretrained encoder the 512 lane and Dongchen's shared 256 latents use)
+Same convention as the paper run's build (its 256 lane, at tag pre-refactor, and the 512 lane's
+build_dataset_direct.py before it): white = emissive / black = not in base_color, metallic 0,
+roughness 255, alpha 255, emission binarized at > 1/255 (any nonzero channel).
+
+Per shape, from the released dataset's layout (3dlg-hcvc/LightgenBench):
+  1. read <release_root>/<sid>/pbr_voxels.vxz and emission_voxels.vxz (256 grid); refuse a shape whose
+     two coordinate sets differ.
+  2. is_emis = (emissive > 0).any(dim=-1)
+  3. out_base_color = white where is_emis else black; out_metallic 0, out_roughness 255, out_alpha 255
+     (the OUT_*_U8 constants).
+  4. attr = cat([out_base_color, out_metallic, out_roughness, out_alpha]) / 255 * 2 - 1.
+  5. encode with the stock tex_enc_next_dc_f16c32_fp16 encoder (the encoder of the shape and PBR latents)
      -> sparse latent (feats, coords).
-  6. save {feats, coords} as .npz (NOT .pth) -- matches the latents_v2 schema
-     Dongchen's shape/tex latents use, so a 256 config can point
-     shape_latent_root/pbr_latent_root/emission_latent_root at a mix of
-     latents_v2 (shared) and this output (ours) with one reader.
+  6. save {feats, coords} as <out_root>/<sid>.npz, the schema of the shape and PBR latents.
 
-NO normalization-stats computation: the 256 lane reuses the shipped
-TRELLIS.2-4B pipeline.json tex stats verbatim, same as 512 (owner-set
-2026-08-26).
-
-Per-item result cache: skips any sid whose output npz already exists, so a
-killed/resubmitted array resumes instead of redoing finished work.
+No normalization statistics are computed: training reuses the shipped TRELLIS.2-4B pipeline.json texture
+statistics. A shape whose output already exists is skipped, so a killed array task resumes.
 
 Usage (one array task):
-  python scripts_segvigen/build_output_tex_latents_256.py \\
-      --split train_72k_agentic --rank 0 --world_size 10
+  python scripts_segvigen/build_output_tex_latents_256.py --sid_list <file> --release_root <dataset_release> \
+      --out_root <latents root>/segvigen_emission_mask_npz --rank 0 --world_size 10
 """
 import argparse
 import json
@@ -58,59 +41,26 @@ import o_voxel  # noqa: E402
 import trellis2.modules.sparse as sp  # noqa: E402
 from trellis2 import models  # noqa: E402
 
-OVOX_ROOT = "/3dlg-jupiter-project/lightgen/datasets/uv_voxel_74k"
-# NOTE (2026-08-26), two dead ends before landing here, both worth recording:
-#   1. build_dataset_direct.py's own OVOX_ROOT
-#      (uv_voxel_pipeline/out_uv_voxel_74k/<sid>/pbr_voxels_256/) resolves
-#      on the WORKSTATION but is a symlink whose absolute target is baked in
-#      WITH the /cs/ prefix (uv_voxel_pipeline/out_uv_voxel_74k ->
-#      /cs/3dlg-jupiter-project/lightgen/datasets/uv_voxel_74k) -- that
-#      prefix exists only on the workstation, so the symlink dangles on
-#      every compute node (confirmed via readlink -f + ls on
-#      cs-venus-07/13: ENOENT, not a mount gap -- /3dlg-jupiter-project
-#      itself mounts fine).
-#   2. trellis2_bw/lightgen_74k_newbake/pbr_voxels_256/<sid>.vxz is ALSO
-#      just a symlink back into the same out_uv_voxel_74k tree, so it
-#      inherits the same dangling-on-compute-nodes problem.
-# The real, compute-node-safe path is the symlink's actual target, one
-# level shallower than build_dataset_direct.py's per-sid layout implies:
-#   <OVOX_ROOT>/<sid>/pbr_voxels_256/<sid>.vxz
-#   <OVOX_ROOT>/<sid>/emission_voxels_256/<sid>.vxz
-# (verified present for the val_72k sids that looked "missing" through
-# both symlink chains above).
-DATASET_DIRECT = "/3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct"
 TRELLIS = "microsoft/TRELLIS.2-4B/ckpts"
-OUT_ROOT = ("/3dlg-falas/project/omages/lightgen/segvigen_emissive/outputs/"
-            "latents_256/output_tex_latents/segvigen_emissive_mask_256")
 
-# channel-hijack constants -- byte-identical to build_dataset_direct.py's
-# OUT_METALLIC_U8 / OUT_ROUGHNESS_U8 / OUT_ALPHA_U8
+# the constant channels of the convention above (the 512 lane's build_dataset_direct.py had the same)
 OUT_METALLIC_U8 = 0
 OUT_ROUGHNESS_U8 = 255
 OUT_ALPHA_U8 = 255
 
 
-def build_one(sid: str, tex_encoder, release_root: str = None, out_root: str = None) -> str:
-    """Returns a short status string; raises on unexpected failure.
-
-    release_root: read the released dataset's layout (<root>/<sid>/pbr_voxels.vxz and
-    emission_voxels.vxz, 3dlg-hcvc/LightgenBench) instead of OVOX_ROOT's per-kind folders.
-    """
-    out_root = out_root or OUT_ROOT
+def build_one(sid: str, tex_encoder, release_root: str, out_root: str) -> str:
+    """Returns a short status string; raises on unexpected failure."""
     out_path = os.path.join(out_root, f"{sid}.npz")
     if os.path.exists(out_path):
         return "cached"
 
-    if release_root:
-        pbr_vxz = os.path.join(release_root, sid, "pbr_voxels.vxz")
-        emis_vxz = os.path.join(release_root, sid, "emission_voxels.vxz")
-    else:
-        pbr_vxz = os.path.join(OVOX_ROOT, sid, "pbr_voxels_256", f"{sid}.vxz")
-        emis_vxz = os.path.join(OVOX_ROOT, sid, "emission_voxels_256", f"{sid}.vxz")
+    pbr_vxz = os.path.join(release_root, sid, "pbr_voxels.vxz")
+    emis_vxz = os.path.join(release_root, sid, "emission_voxels.vxz")
     if not os.path.exists(pbr_vxz):
-        return f"SKIP missing pbr_voxels_256: {pbr_vxz}"
+        return f"SKIP missing pbr_voxels.vxz: {pbr_vxz}"
     if not os.path.exists(emis_vxz):
-        return f"SKIP missing emission_voxels_256: {emis_vxz}"
+        return f"SKIP missing emission_voxels.vxz: {emis_vxz}"
 
     coords_pbr, pbr = o_voxel.io.read(pbr_vxz)
     coords_emis, emis = o_voxel.io.read(emis_vxz)
@@ -151,22 +101,15 @@ def build_one(sid: str, tex_encoder, release_root: str = None, out_root: str = N
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--split", default=None, choices=["train_72k_agentic", "val_72k"])
+    ap.add_argument("--sid_list", required=True, help="one shape id per line")
+    ap.add_argument("--release_root", required=True, help="the released dataset's root (<root>/<sid>/*.vxz)")
+    ap.add_argument("--out_root", required=True, help="where <sid>.npz goes")
     ap.add_argument("--rank", type=int, required=True)
     ap.add_argument("--world_size", type=int, required=True)
-    # the released dataset (2026-09): shapes from a list, voxels in the release layout
-    ap.add_argument("--sid_list", default=None, help="one shape id per line; replaces --split")
-    ap.add_argument("--release_root", default=None, help="dataset_release root; replaces OVOX_ROOT")
-    ap.add_argument("--out_root", default=None, help="replaces OUT_ROOT")
     args = ap.parse_args()
 
-    if args.sid_list:
-        all_ids = [l.strip() for l in open(args.sid_list) if l.strip()]
-        src = args.sid_list
-    else:
-        assert args.split, "pass --split or --sid_list"
-        all_ids = sorted(os.listdir(os.path.join(DATASET_DIRECT, args.split)))
-        src = args.split
+    all_ids = [l.strip() for l in open(args.sid_list) if l.strip()]
+    src = args.sid_list
     my_ids = [sid for i, sid in enumerate(all_ids) if i % args.world_size == args.rank]
     print(f"[build256] rank {args.rank}/{args.world_size}: {len(my_ids)} of {len(all_ids)} sids in {src}",
           flush=True)
