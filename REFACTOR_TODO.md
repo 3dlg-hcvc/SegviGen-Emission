@@ -588,7 +588,7 @@ identical in all three modes (also the `[train]`/`[val]`/`[ckpt-timing]` lines);
 No user or cluster paths in this layer. Needs steps 10 and 11; its README commands are written in
 step 15.
 
-- [ ] The inputs. The Hugging Face release carries no geometry and no latents, so a user builds
+- [x] The inputs. The Hugging Face release carries no geometry and no latents, so a user builds
   them: TexVerse GLBs → dual grid → shape latent (`encode_shape_from_dual_grid.py`); released PBR
   voxels → PBR latent (`encode_pbr_from_voxels.py`);
   emission voxels → emission-mask latent (`build_output_tex_latents_256.py`); thumbnails → DINOv3
@@ -600,18 +600,20 @@ step 15.
   occupied cells against the released PBR voxels (`:113-116`); a public recipe ports those parent
   pieces or depends on them. One generic script or README sequence; check on a few shapes that it
   reproduces jupiter `datasets/dataset_release_latents/`.
-- [ ] The init: `full_seg_rekeyed.pt` from Hugging Face `fenghora/SegviGen` `full_seg.ckpt` through
+- [x] The init: `full_seg_rekeyed.pt` from Hugging Face `fenghora/SegviGen` `full_seg.ckpt` through
   `rekey_full_seg.py`.
-- [ ] Training: the release config plus the launcher's overrides (`segvigen_256_release.sh:93-106`:
+- [x] Training: the release config plus the launcher's overrides (`segvigen_256_release.sh:93-106`:
   4 × 12, `batch_split`, `ckpt_last_every_n_steps` = steps per epoch, `disable_final_snapshot=true`,
   the data knobs); the config's two leftover jupiter `cond_search_dirs` (`:44-45`, replaced by the
   launcher's override) go; the README states the GPU memory needed.
 - [ ] Inference: step 10's predictor on the release test split.
-- [ ] The internal launchers stay as they are.
+- [x] The internal launchers stay as they are.
 
 **Instructions:**
 
-**Result:**
+**Result:** Part 1 `<this commit>`: `script/lightgenbench/{prepare_inputs,get_init,train}.sh`; the release config's two jupiter
+`cond_search_dirs` go. On a 4-shape mini release (Solar L40S): dual grids byte-identical to jupiter's, latents within 3.4e-3, route-3
+conditioning within 6e-4 mean, init identical (640/640), `train.sh` dry run trains a step. Part 2 (inference) waits for step 10.
 
 ### 15. Docs
 

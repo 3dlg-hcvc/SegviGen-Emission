@@ -41,8 +41,6 @@ dataset:
     emission_latent_dir: __SET_BY_LAUNCHER__
     cond_search_dirs:
       - __SET_BY_LAUNCHER__
-      - /3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct/train_72k_agentic
-      - /3dlg-jupiter-project/lightgen/segvigen_emissive/dataset_direct/val_72k
     # Shipped TRELLIS.2 pipeline.json stock stats -- SAME values as the 512 lane's
     # segvigen_emissive_direct.yaml (tag pre-refactor), copied verbatim. NOT the DiT baseline's
     # regenerated agentic-VAE emission stats (different latent space).
