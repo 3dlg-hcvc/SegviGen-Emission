@@ -21,14 +21,14 @@ path. It also predates the release retrain, so its lists would move live release
 
 Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates and baselines).
 
-- [ ] 1. Housekeeping (tag and worktree done; the paper checkpoint onto jupiter, D21)
+- [x] 1. Housekeeping (tag and worktree done; the paper checkpoint onto jupiter, D21)
 - [ ] 2. Dead root files, one-off scripts and the live-evaluation loop
 - [ ] 3. `archive/`, `docs/`, `reports/`, stale ignore rules
 - [ ] 4. `blender_packages/` (upstream's demo material stays, D12)
 - [ ] 5. Launchers (per D17)
 - [ ] 5b. Move the kept cluster scripts into `script/internal/`
 - [ ] 6. Configs (per D17)
-- [ ] 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
+- [x] 7. Check setup: live-code gate, published-chain gate, training check, noise baselines (no code change)
 - [ ] 8. Our modules (per D13)
 - [ ] 9. Coverage run (no code change)
 - [ ] 10. An inference path in this repo (per D18; the rescore needs Dongchen's go)
@@ -289,14 +289,16 @@ Dongchen's answers of 2026-10-11 (all answered except D10):
 
 - [x] Tag `pre-refactor` and the worktree (Done 1).
 - [x] Commit this plan on the branch (Dongchen answered the decisions on 2026-10-11).
-- [ ] D21: the paper checkpoint of record onto jupiter `outputs/segvigen_256_bw_6gpu/`.
-- [ ] The 2026-09-16 records stay in the parent (`../evaluation/newdata_eval/segvigen256/records/`,
+- [x] D21: the paper checkpoint of record onto jupiter `outputs/segvigen_256_bw_6gpu/`.
+- [x] The 2026-09-16 records stay in the parent (`../evaluation/newdata_eval/segvigen256/records/`,
   `compare_dumps.py`, `provenance.py`); step 7 reuses them.
-- [ ] `../docs/status/refactor.md` says SegviGen-Emission was "not restructured": step 16's list.
+- [x] `../docs/status/refactor.md` says SegviGen-Emission was "not restructured": step 16's list.
 
 **Instructions:**
 
-**Result:**
+**Result:** Plan `9d0fce5`. D21 done 2026-10-12: jupiter `outputs/segvigen_256_bw_6gpu/` holds the snapshot
+(sha256 `fc7a9bd1…` on both ends and as recorded 2026-09-16), the bridged file (md5 as recorded),
+`bf0e9de`'s config and `SHA256SUMS`; MANIFEST row added.
 
 ### 2. Dead root files, one-off scripts and the live-evaluation loop
 
@@ -411,14 +413,14 @@ reaches into the parent repo).
 All runs on tag `pre-refactor`, in parallel across machines. Tooling goes to `script/internal/gate/`;
 data and run outputs outside the repo.
 
-- [ ] The checkpoints, named, never picked: the release `snapshots/step0044722.pt` and `ckpts/last.ckpt`
+- [x] The checkpoints, named, never picked: the release `snapshots/step0044722.pt` and `ckpts/last.ckpt`
   with `config.yaml` (rsync, sha256 against `.backup_sha256.txt`; `df` first); the paper
   `step0023405_snapshot.ckpt` read from the falas mirror (sha256 `fc7a9bd1…`) and the bridged
   `step0023405.pt`.
-- [ ] The live-code gate tool (§ Runs and the gate) and a numeric comparison: per shape and tensor,
+- [x] The live-code gate tool (§ Runs and the gate) and a numeric comparison: per shape and tensor,
   byte identity, mean and max |d|; NaN on one side fails; verdict EMPTY on an empty shapes file.
   TEXGen's `scripts/internal/gate/compare_numeric.py` is the pattern.
-- [ ] The subsets, fixed in files. Live-code gate: 20 paper validation shapes (the paper's emission
+- [x] The subsets, fixed in files. Live-code gate: 20 paper validation shapes (the paper's emission
   latents cover train and val only), 20 of the release `trellis2_bw/eval_outputs/release_eval/test200.txt`
   if the release emission latents cover them, else of `val200.txt`. Published-chain gate: the five
   test shapes of `records/smoke_sids.txt` and 20 of the release test shapes. Inputs: paper from
@@ -428,12 +430,12 @@ data and run outputs outside the repo.
   jupiter `segvigen_emissive/dataset_direct/{train_72k_agentic,val_72k,test_72k}`); release from jupiter
   `datasets/dataset_release_latents/`. Check that `SegviGenEmissive256` admits every gate shape
   (`trellis2/datasets/segvigen_256.py:100-108` skips a shape missing any input).
-- [ ] Live-code gate noise: two runs per GPU type (the workstation 4090 if the 1.3B denoiser fits
+- [x] Live-code gate noise: two runs per GPU type (the workstation 4090 if the 1.3B denoiser fits
   for inference; Solar L40S with `~/envs/trellis2`, whose flex_gemm has no sm_86 kernels, so no A40).
-- [ ] The published-chain gate: the dump script copy with `PROBE` from the tree under test; baseline
+- [x] The published-chain gate: the dump script copy with `PROBE` from the tree under test; baseline
   and noise run on A40 in Kevin's env (as `segvigen256/release_dump.sbatch`; never on Blackwell nodes,
   `:11`); the numbers against the published A40 dumps recorded once.
-- [ ] The training check through the real `train.py` and `SegviGenFlowTrainer`:
+- [x] The training check through the real `train.py` and `SegviGenFlowTrainer`:
   - a tiny training root from `datasets/dataset_release_latents/` (a few train and two val shapes:
     shape, PBR and emission-mask latents, conditioning, metadata), fixed split;
   - a check config extending the release config: local paths, batch 1, a few dozen steps, one
@@ -446,11 +448,13 @@ data and run outputs outside the repo.
   - memory: the 1.3B denoiser with AdamW and EMA likely does not train on a 24 GB 4090 even at batch 1
     (measure; else Solar L40S); which env trains here (`~/envs/trellis2` or Kevin's) is measured too.
   Not covered: `batch_split`, multi-GPU DDP, the Blackwell env of the paper run.
-- [ ] The existing test `data_toolkit/test_checkpoint_cadence.py` on `pre-refactor`; record the result.
+- [x] The existing test `data_toolkit/test_checkpoint_cadence.py` on `pre-refactor`; record the result.
 
 **Instructions:**
 
-**Result:**
+**Result:** Tooling and record in `script/internal/gate/` (README). Two `pre-refactor` runs agree exactly in
+all three checks: live-code gate on the workstation 4090 and sp4090 (also identical to each other), published
+chain on A40 (also byte-identical to the published dumps), training check on L40S. Pass bar: identity.
 
 ### 8. Our modules (per D13)
 
