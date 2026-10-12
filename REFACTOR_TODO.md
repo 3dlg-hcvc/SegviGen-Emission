@@ -23,7 +23,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 
 - [x] 1. Housekeeping (tag and worktree done; the paper checkpoint onto jupiter, D21)
 - [x] 2. Dead root files, one-off scripts and the live-evaluation loop
-- [ ] 3. `archive/`, `docs/`, `reports/`, stale ignore rules
+- [x] 3. `archive/`, `docs/`, `reports/`, stale ignore rules
 - [ ] 4. `blender_packages/` (upstream's demo material stays, D12)
 - [ ] 5. Launchers (per D17)
 - [ ] 5b. Move the kept cluster scripts into `script/internal/`
@@ -346,16 +346,18 @@ deleted files; step 15 writes the doc of record). Live-code gate 20/20 + 20/20 i
 
 ### 3. `archive/`, `docs/`, `reports/`, stale ignore rules
 
-- [ ] `archive/` (30 files, the `lightgen` branch's 2026-07-09 cleanup), `docs/` (9: its April–June
+- [x] `archive/` (30 files, the `lightgen` branch's 2026-07-09 cleanup), `docs/` (9: its April–June
   plans and specs), `reports/` (2 status reports).
-- [ ] `.gitignore`: the `lightgen` branch's rules for its emission lanes and PNGs; Kevin's block
+- [x] `.gitignore`: the `lightgen` branch's rules for its emission lanes and PNGs; Kevin's block
   (`pysite/`, `data/`, `outputs/`, `log/`, `wandb/`, `__pycache__/`, `*.pt`) stays. Check whether an
   unanchored `data/` also matches tracked files under `o-voxel/third_party/` (TRELLIS2 found 12) and
   that nothing new shows as untracked.
 
 **Instructions:**
 
-**Result:**
+**Result:** `archive/` (30), `docs/` (9), `reports/` (2) deleted; `.gitignore` keeps `.claude/` of the `lightgen`
+block and anchors Kevin's `data/` as `/data/` (12 tracked eigen files were matched); the registry comment naming
+`archive/` removed. Live-code gate 20/20 + 20/20 identical.
 
 ### 4. `blender_packages/` (upstream's demo material stays, D12)
 

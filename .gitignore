@@ -1,26 +1,5 @@
-# Project data (voxels, latents, parquet, splits) — large, lives on local disk
-data/
-
-# Training run outputs (checkpoints, wandb, summaries) — large
-outputs/
-
-# Archived / deprecated training run artifacts
-.deprecated/
-
 # Local agent / IDE settings
 .claude/
-
-# Debug scratch
-data_toolkit/debug/
-debug_outputs/
-
-# Generated visualization artifacts (keep scripts, drop binaries/CSVs)
-vis/*.png
-vis/*.csv
-visualizations/
-log/
-emission_dit_*_pred.png
-emission_dit_*_test.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -232,7 +211,7 @@ __marimo__/
 
 # segvigen-lightning local artifacts
 pysite/
-data/
+/data/
 outputs/
 log/
 wandb/

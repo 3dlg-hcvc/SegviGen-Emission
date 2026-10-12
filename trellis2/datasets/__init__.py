@@ -16,7 +16,6 @@ __attributes = {
     'ImageConditionedSLatPbr': 'structured_latent_svpbr',
 
     # LightGen: emission generation in voxel space (TRELLIS.2-native)
-    # UV-space datasets archived at archive/datasets/lightgen_uv.py
     'LightGenSLatEmission': 'lightgen_slat',
     'LightGenSLatEmissionLatent': 'lightgen_slat',
     'SegviGenEmissiveDirect': 'segvigen_direct',
