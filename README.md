@@ -14,7 +14,7 @@ BiRefNet (4.57 does, 5.1 does not). `PYTHON=` selects the interpreter for each s
 
 ```bash
 # 1. the inputs: dual grid, shape and PBR latents, emission-mask latents, DINOv3 conditioning (one GPU, resumable)
-bash script/lightgenbench/prepare_inputs.sh <release_dir> <texverse_metadata.parquet> <texverse_glb_root> <lightgen_root> <inputs_dir>
+bash script/lightgenbench/prepare_inputs.sh <release_dir> <texverse_1k> <lightgen_root> <inputs_dir>
 # 2. the init: SegviGen's full_seg checkpoint, rekeyed
 bash script/lightgenbench/get_init.sh <inputs_dir>/full_seg_rekeyed.pt
 # 3. training: the release recipe (50,000 steps, effective batch 48), here 4 GPUs x 12; rerun to resume

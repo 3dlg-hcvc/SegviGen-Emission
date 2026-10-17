@@ -20,14 +20,13 @@ mapfile -t U < "$LIST"
 for u in "${U[@]}"; do ln -s $REL/$u $LOC/mini/$u; done
 printf '{"train": ["%s", "%s"], "val": ["%s"], "test": ["%s"]}\n' "${U[0]}" "${U[1]}" "${U[2]}" "${U[3]}" > $LOC/mini/splits.json
 LG=$HOME/code/lightgen
-META=$(cd $LG && $HOME/envs/trellis2/bin/python -c 'from data_processing.data_preparation.config import SOLAR_METADATA; print(SOLAR_METADATA)')
 GLB=$(cd $LG && $HOME/envs/trellis2/bin/python -c 'from data_processing.data_preparation.config import SOLAR_GLB_ROOT; print(SOLAR_GLB_ROOT)')
 export HF_HOME=$J/hf_cache TRITON_CACHE_DIR=$LOC/triton TORCHINDUCTOR_CACHE_DIR=$LOC/inductor
 export FLEX_GEMM_AUTOTUNE_CACHE_PATH=$LOC/flex_gemm.json; cp $HOME/.flex_gemm/autotune_cache.json $FLEX_GEMM_AUTOTUNE_CACHE_PATH 2>/dev/null || true
-echo "[lgb] $(date) node=$(hostname) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader) tree=$(cat $TREE/TREE_REV 2>/dev/null) meta=$META glb=$GLB"
+echo "[lgb] $(date) node=$(hostname) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader) tree=$(cat $TREE/TREE_REV 2>/dev/null) glb=$GLB"
 fail=0
 ( source $J/miniforge3/etc/profile.d/conda.sh; conda activate trellis2
-  PYTHON=python3 bash $TREE/script/lightgenbench/prepare_inputs.sh $LOC/mini "$META" "$GLB" $LG $LOC/inputs 4
+  PYTHON=python3 bash $TREE/script/lightgenbench/prepare_inputs.sh $LOC/mini "$GLB" $LG $LOC/inputs 4
 ) > $LOC/prepare.log 2>&1 || fail=$((fail+1))
 tail -n 3 $LOC/prepare.log
 ( source $J/miniforge3/etc/profile.d/conda.sh; conda activate trellis2

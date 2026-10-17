@@ -15,9 +15,7 @@ set -uo pipefail
 CODE="${1:?code root}"; ROOT="${2:?latents root}"; W="${3:?workers}"; OFF="${4:?rank offset}"; WORLD="${5:?world size}"
 PY="$HOME/envs/trellis2/bin/python"
 LG="$HOME/code/lightgen"
-REL=/3dlg-jupiter-project/lightgen/datasets/dataset_release
 cd "$LG"
-META="$($PY -c 'from data_processing.data_preparation.config import SOLAR_METADATA; print(SOLAR_METADATA)')"
 GLB="$($PY -c 'from data_processing.data_preparation.config import SOLAR_GLB_ROOT; print(SOLAR_GLB_ROOT)')"
 echo "[dual_grid] $(date) node=$(hostname) workers=$W ranks=$OFF..$((OFF+W-1))/$WORLD lightgen=$(git rev-parse --short HEAD) code=$(git -C "$CODE" rev-parse --short HEAD)"
 cd "$CODE"
@@ -26,13 +24,13 @@ pids=()
 for i in $(seq 0 $((W-1))); do
   r=$((OFF+i))
   OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 \
-  "$PY" -u scripts_segvigen/newdata/build_dual_grid.py --lightgen_root "$LG" \
-    --sid_list "$ROOT/meta/release_all.txt" --release "$REL" --metadata "$META" --glb_root "$GLB" \
-    --out_root "$ROOT" --rank "$r" --world_size "$WORLD" > "$ROOT/_logs/dual_grid.rank$r.$SLURM_JOB_ID.log" 2>&1 &
+  "$PY" -u data_toolkit/dual_grid_from_glb.py --parquet "$ROOT/meta/release_index.parquet" --glb_root "$GLB" \
+    --out_root "$ROOT" --loader lightgenbench --lightgen_repo "$LG" --check_cells \
+    --rank "$r" --world_size "$WORLD" > "$ROOT/_logs/dual_grid.rank$r.$SLURM_JOB_ID.log" 2>&1 &
   pids+=($!)
 done
 fail=0
 for p in "${pids[@]}"; do wait "$p" || fail=$((fail+1)); done
-grep -h "DONE" "$ROOT"/_logs/dual_grid.rank*."$SLURM_JOB_ID".log | tail -n "$W"
-echo "[dual_grid] $(date) rank processes that exited non-zero: $fail of $W"
+grep -h " done: " "$ROOT"/_logs/dual_grid.rank*."$SLURM_JOB_ID".log | tail -n "$W"
+echo "[dual_grid] $(date) rank processes that exited non-zero: $fail of $W (failed shapes: $ROOT/dual_grid_256/failed_rank*.txt)"
 exit $(( fail > 0 ))

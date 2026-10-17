@@ -647,7 +647,7 @@ same file the two plans make the same call. Dongchen chose A1–A6 and the fixes
 reach them (Dongchen: skip checks for very small changes), on Solar nodes in parallel.
 
 - [x] 15a. Our training hooks to the end of upstream's `callbacks.py`, as TRELLIS2's (A1).
-- [ ] 15b. One dual-grid script: TRELLIS2's `data_toolkit/dual_grid_from_glb.py` (A2).
+- [x] 15b. One dual-grid script: TRELLIS2's `data_toolkit/dual_grid_from_glb.py` (A2).
 - [ ] 15c. The predictor named `data_toolkit/predict_emission.py`, as TRELLIS2's (A3).
 - [ ] 15d. The release producers from `scripts_segvigen/` to `data_toolkit/` under TRELLIS2-style names (A4).
 - [ ] 15e. The release layer as TRELLIS2's two entry points, `prepare_lightgenbench.sh` and `run_chain.sh` (A5).
@@ -660,6 +660,11 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
   (`diff` with TRELLIS2's file: the banner's fifth item, the PEAK_VRAM method, and `OptionalFinalSnapshotCallback`,
   upstream's `SnapshotCallback` with `disable_final_snapshot`, named by me since one module cannot hold two
   `SnapshotCallback`s). Training check identical (145/145, 74/74, 74/74, PEAK_VRAM printed); the test passes (5/5).
+- 15b: `data_toolkit/dual_grid_from_glb.py` is TRELLIS2's file byte for byte (its `--loader lightgenbench` is the
+  loader `build_dual_grid.py` swapped in, `--check_cells` the same cell check); `build_dual_grid.py` goes. The GLBs
+  come from a TexVerse-1K download's layout, so `prepare_inputs.sh` drops its TexVerse metadata argument; a failed
+  shape now makes the script exit non-zero, which `prepare_inputs.sh` reports and the verify step leaves out.
+  Check: 8 release shapes on Solar CPU, grids byte-identical to jupiter's `dataset_release_latents/dual_grid_256`.
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 
