@@ -37,7 +37,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 13. Environment files
 - [x] 14. Release layer: generic entry points for LightgenBench users
 - [x] 15. Docs
-- [ ] 15a–15g. Alignment with the TRELLIS2 refactor as Dongchen reviewed it (2026-10-17): hooks, dual grid,
+- [x] 15a–15g. Alignment with the TRELLIS2 refactor as Dongchen reviewed it (2026-10-17): hooks, dual grid,
   predictor name, producers, release layer, docs, fixes
 - [ ] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 - [ ] 17. Cut-over (per D8)
@@ -731,7 +731,11 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
 **Result:** Checks: at `5697d18` all identical (live 183/183 and 200/200, published chain 5/5 and 20/20, bridge 640/640, training
 145/145, 74/74, 74/74); from there to the head only new files, `script/lightgenbench/` and docs changed, and the live-code gate at
 `dae79fa` is identical (20/20, 20/20). Step 10's checks cover the predictor. The one test, `data_toolkit/test_checkpoint_cadence.py`,
-passes (5/5; run at step 7 and at 15a). Steps 15a–15g followed (Dongchen, 2026-10-17); the checks are rerun on their head.
+passes (5/5; run at step 7 and at 15a). Steps 15a–15g followed (Dongchen, 2026-10-17); at `07decc9`, the checks their
+changes can reach, in parallel on Solar A40s and the 4090: live-code gate 20/20 and 20/20, published chain 5/5 and
+20/20 byte for byte (bridge 640/640, `ckpt_step` reads), the predictor 5/5 and 20/20 byte for byte, the conditioning
+check 11/11 identical to step 11c; the training check (15a) and the release-layer check (15e) ran at their steps, and
+nothing either reaches changed after them. Waiting for Dongchen's review.
 
 ### 17. Cut-over (per D8)
 
