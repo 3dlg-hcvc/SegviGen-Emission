@@ -73,3 +73,26 @@ and the predictor twice each on the three smallest test shapes and a control.
   run (`C/star2_out/diag_small/`). Each run autotunes 5–7 flex_gemm kernels live, by timing: the likely cause.
 - Paper seed 4 was made on an RTX 6000 Ada; Solar's only one (cs-bd-01) fails torch's CUDA initialization
   (2026-10-12), so that seed is unchecked.
+
+## 5. Conditioning check (steps that touch the conditioning producer)
+
+`star2/cond_check.sbatch <tree tgz> <name> old|new` runs the tree's `build_cond_tree.py` (`data_toolkit/` since step
+15d, `scripts_segvigen/newdata/` before) on one Solar A40 in Kevin's env: routes 1–2 (reuse, convert) on
+`cond_io6.txt` and route 3 (build: thumbnail → BiRefNet → DINOv3) on `cond_build5.txt`. `old` is a tree whose route 3
+imports the original SegviGen tree (the falas deploy), `new` the port in `data_toolkit/thumbnail_cond.py`.
+
+- Step 11c: old and new byte-identical on all 11 shapes; routes 1–2 identical to jupiter's
+  `dataset_release_latents/segvigen_cond_fp16`, route 3 within about 1e-3 mean (the release's route 3 ran elsewhere).
+
+## 6. Release-layer check (steps that touch `script/lightgenbench/` or the producers)
+
+`star2/lightgenbench_check.sbatch <tree tgz> <name> lgb_mini4.txt` builds a download folder of the release's own files
+for 4 shapes (2 train, 1 val, 1 test: per split a voxel tar and a thumbnail tar, `splits.json`, `checksums.sha256`)
+and runs `prepare_lightgenbench.sh` and every `run_chain.sh` stage on one Solar L40S (Kevin's env; `train --tryrun` in
+`~/envs/trellis2`), then compares with jupiter's `dataset_release_latents` and the published test prediction.
+
+- Step 15e: dual grids byte-identical (4/4), shape latents within 1.7e-3, PBR latents 3.4e-3, mask latents 2.7e-3,
+  conditioning 6.0e-4 mean, init identical (640/640); the test shape's prediction within the bars of the published
+  dump (`030adbda…`, a 6-voxel mask, IoU 1.0). The latents differ at float level only (re-encoded on another card),
+  as at step 14. `prepare_lightgenbench.sh` alone on jupiter's copy of the Hugging Face release (`SKIP_DOWNLOAD=1`):
+  78 tars checked, 36,826 shapes, its index equal to jupiter's (the parquet's contents; its bytes differ).

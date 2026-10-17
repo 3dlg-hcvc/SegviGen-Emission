@@ -158,8 +158,8 @@ So TEXGen's gate (inference through the repo's own code) does not exist here. St
 1. The directory `SegviGen-Emission/`, unregistered in the parent until step 16.
 2. Registry names in every stored `config.yaml` (the release run's on jupiter, `bf0e9de`'s paper
    config, Kevin's run dirs): `SegviGenSLatFlowModel` (`trellis2/models/__init__.py:12`),
-   `SegviGenEmissive256` (`trellis2/datasets/__init__.py:23`), `SegviGenFlowTrainer`
-   (`trellis2/trainers/__init__.py:22`, `train.py:57`); upstream's `DinoV3FeatureExtractor`,
+   `SegviGenEmissive256` (`trellis2/datasets/__init__.py:18`), `SegviGenFlowTrainer`
+   (`trellis2/trainers/__init__.py:19`, `train.py:57`); upstream's `DinoV3FeatureExtractor`,
    `AdaptiveGradClipper`, `LinearMemoryController`. Every key of the two published configs stays
    accepted: unknown trainer kwargs are set silently (`trellis2/trainers/basic.py:85-86`), so a renamed key such as
    `finetune_ckpt`, `pos_weight` or `disable_final_snapshot` becomes a silent no-op.
@@ -184,8 +184,9 @@ So TEXGen's gate (inference through the repo's own code) does not exist here. St
    `<shape_latent_root>/shape_latents/<shape_latent_name>/`, `<pbr_latent_root>/pbr_latents/<pbr_latent_name>/`
    (`segvigen_256.py:72-73`),
    `emission_latent_dir/<sid>.npz`, `cond_search_dirs` holding `cond_pos.pth` or `cond.pth`,
-   `token_counts.json`. Producers: `scripts_segvigen/newdata/*`, `build_output_tex_latents_256.py`,
-   `script/star2/newdata_*.sbatch`; the built tree is jupiter `datasets/dataset_release_latents/`
+   `token_counts.json`. Producers: `data_toolkit/{build_lightgenbench_index,dual_grid_from_glb,encode_emission_mask_latents,build_cond_tree,verify_and_pack}.py`
+   (until step 15d `scripts_segvigen/newdata/*` and `build_output_tex_latents_256.py`),
+   `script/internal/star2/newdata_*.sbatch` (until step 5b `script/star2/`); the built tree is jupiter `datasets/dataset_release_latents/`
    (README inside).
 8. Branches and code in use elsewhere. `retrain-newdata` stays at `bff5c7e`: the release launcher
    sets `BRANCH="retrain-newdata"` (`segvigen_256_release.sh:20`) and pulls a git bundle (`:123-124`);
@@ -652,7 +653,7 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
 - [x] 15d. The release producers from `scripts_segvigen/` to `data_toolkit/` under TRELLIS2-style names (A4).
 - [x] 15e. The release layer as TRELLIS2's two entry points, `prepare_lightgenbench.sh` and `run_chain.sh` (A5).
 - [x] 15f. Docs in TRELLIS2's layout: README.md the doc of record, CLAUDE.md the agent part (A6).
-- [ ] 15g. The fixes the comparison found (D).
+- [x] 15g. The fixes the comparison found (D).
 
 **Results:**
 
@@ -691,6 +692,12 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
   under TRELLIS2's headings (environments, runs of record, Keep stable, commands, the gate, source map, numbered
   traps, conventions); its Blackwell notes cite the tracked `script/bw/bootstrap_segvigen_bw.sh` (tag
   `pre-refactor`), not an untracked script. Docs only.
+- 15g: the fixes not already in 15a–15f: the gate's conditioning check runs trees from before and after 15d (it
+  broke at 15d); the gate README documents the conditioning and release-layer checks; the plan's Keep stable paths and
+  line numbers, its stale "No test suite exists", and a SegviGen-Emission row for `../AGENTS.md` § Naming on step 16's
+  list. Done earlier: the false "same file as TRELLIS2's" claim (15a), `train.sh`'s silent skip of the init (15e's
+  resume refusal), the README's checkpoint choice, predictions folder and RMBG-2.0 license (15e, 15f), the untracked
+  Blackwell source (15f).
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 
@@ -708,7 +715,8 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
   task tables, the docs index), `../docs/baselines/segvigen.md`, `../docs/baselines/segvigen-live-training.md`
   (§ Where the code is), `../docs/status/refactor.md` (the SegviGen-Emission bullet),
   `../docs/status/checkpoints.md`, `../docs/evaluation.md`; a path-scoped rule
-  `../.claude/rules/segvigen.md` beside `texgen.md` and `trellis2.md` (propose it).
+  `../.claude/rules/segvigen.md` beside `texgen.md` and `trellis2.md` (propose it); a SegviGen-Emission row in
+  `../AGENTS.md` § Naming (its display name, which Keep stable 10 relies on), proposed to Dongchen first.
 - [ ] Outside the repo: the compute-access skill's `hedge.sh` if step 5b moved the release launcher
   (step 5b did: the launcher is `script/internal/alliance/segvigen_256_release.sh`; `hedge.sh` takes the path as an
   argument, so only its callers' notes change).
@@ -719,7 +727,8 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
 
 **Result:** Checks: at `5697d18` all identical (live 183/183 and 200/200, published chain 5/5 and 20/20, bridge 640/640, training
 145/145, 74/74, 74/74); from there to the head only new files, `script/lightgenbench/` and docs changed, and the live-code gate at
-`dae79fa` is identical (20/20, 20/20). Step 10's checks cover the predictor. No test suite exists. Waiting for Dongchen's review.
+`dae79fa` is identical (20/20, 20/20). Step 10's checks cover the predictor. The one test, `data_toolkit/test_checkpoint_cadence.py`,
+passes (5/5; run at step 7 and at 15a). Steps 15a–15g followed (Dongchen, 2026-10-17); the checks are rerun on their head.
 
 ### 17. Cut-over (per D8)
 
