@@ -129,21 +129,25 @@ case "$STAGE" in
     ;;
   train)
     [ -f "$USABLE" ] || fail "no $USABLE: run the cond stage first (its check writes it)"
+    for a in ${EXTRA[@]+"${EXTRA[@]}"}; do
+      case "$a" in *batch_size_per_gpu*) fail "set the batch with BS=, not $a (the batch check and the epoch length read BS)" ;; esac
+    done
     BS=${BS:-12}
     if [ $((NUM_GPUS * BS)) -ne 48 ] && [ "${ANY_BATCH:-0}" != 1 ]; then
       fail "$NUM_GPUS GPUs x $BS = $((NUM_GPUS * BS)); the release's global batch is 48 (ANY_BATCH=1 to run anyway)"
-    fi
-    if [ ! -f "$INIT" ]; then   # SegviGen's full_seg checkpoint, rekeyed for train.py (gitignored, seconds)
-      SRC=$($PY -c 'import os; from huggingface_hub import hf_hub_download
-print(hf_hub_download("fenghora/SegviGen", "full_seg.ckpt"), flush=True); os._exit(0)')
-      mkdir -p "$(dirname "$INIT")"; $PY data_toolkit/init_segvigen_from_full_seg.py "$SRC" "$INIT.tmp" && mv "$INIT.tmp" "$INIT"
     fi
     OUT=$OUTPUTS/$RUN_NAME; tmp_room 11
     ckpt=last
     if [ "${RESUME:-0}" != 1 ]; then
       ckpt=none   # a fresh run: no resume, so the init load happens
-      if compgen -G "$OUT/ckpts/*.ckpt" >/dev/null || compgen -G "$OUT/ckpts/misc_step*.pt" >/dev/null; then
+      # the run directory stays literal: only the file names are patterns
+      if [ -n "$(find "$OUT/ckpts" -maxdepth 1 \( -name '*.ckpt' -o -name 'misc_step*.pt' \) 2>/dev/null | head -n 1)" ]; then
         fail "$OUT holds checkpoints: RESUME=1 continues that run (without the init load); a fresh run needs an empty directory"
+      fi
+      if [ ! -f "$INIT" ]; then   # SegviGen's full_seg checkpoint, rekeyed for train.py (gitignored, seconds); a resume never reads it
+        SRC=$($PY -c 'import os; from huggingface_hub import hf_hub_download
+print(hf_hub_download("fenghora/SegviGen", "full_seg.ckpt"), flush=True); os._exit(0)')
+        mkdir -p "$(dirname "$INIT")"; $PY data_toolkit/init_segvigen_from_full_seg.py "$SRC" "$INIT.tmp" && mv "$INIT.tmp" "$INIT"
       fi
     fi
     # one epoch in optimizer steps: last.ckpt is refreshed once per epoch, as in the release run

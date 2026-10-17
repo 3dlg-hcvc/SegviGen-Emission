@@ -685,6 +685,9 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
   own files through every stage on Solar L40S: dual grids byte-identical, latents within 3.4e-3, masks 2.7e-3,
   conditioning 6.0e-4 mean, init identical, the test prediction within the bars of the published dump; and `prepare`
   on jupiter's copy of the Hugging Face release (CPU): 78 tars checked, 36,826 shapes, its index equal to jupiter's.
+  Fix after Codex's review: `train` refuses a `batch_size_per_gpu` override (use `BS=`), fetches the init only for a
+  fresh run, and checks the run directory for checkpoints without globbing its path; tested with a stub interpreter
+  on a fake data root (each case refused or passed as intended). TRELLIS2's `run_chain.sh` shares the first and third.
 - 15f: `README.md` is the doc of record in TRELLIS2's section order (what differs from SegviGen and TRELLIS.2 with
   the `git diff --diff-filter=M 98c2548` list, setup with the gated models, data, training, prediction, repository,
   license, citation); it cites SegviGen's paper beside TRELLIS.2, notes RMBG-2.0's non-commercial license, says which
