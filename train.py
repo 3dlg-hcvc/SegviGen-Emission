@@ -29,18 +29,16 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
 from trellis2.trainers.callbacks import (
+    CheckpointTimingCallback,
     ElasticControllerCallback,
     EmaCallback,
+    OptionalFinalSnapshotCallback,
     SamplerStateCallback,
-)
-from trellis2.trainers.data import TrellisDataModule
-from trellis2.trainers.lightgen_hooks import (
-    CheckpointTimingCallback,
-    SnapshotCallback,
     TrainTraceCallback,
     build_checkpoint_callback,
     make_wandb_logger,
 )
+from trellis2.trainers.data import TrellisDataModule
 from trellis2 import trainers as trellis_trainers
 
 
@@ -410,7 +408,7 @@ def build_trainer(
 
     sample_every_n_steps = int(trainer_args.get("i_sample", 0) or 0)
     callbacks.append(
-        SnapshotCallback(
+        OptionalFinalSnapshotCallback(
             snapshot_batch_size=int(trainer_args.get("snapshot_batch_size", 4)),
             val_num_samples=int(trainer_args.get("val_num_samples", 16)),
             sample_every_n_steps=sample_every_n_steps,

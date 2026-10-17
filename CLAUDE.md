@@ -15,7 +15,6 @@ shows ours. Commands for users: `README.md`. Parent repo context: `../AGENTS.md`
 | `trellis2/models/segvigen_flow.py` | `SegviGenSLatFlowModel`: upstream's `ElasticSLatFlowModel` with the PBR tokens packed after the noisy target |
 | `trellis2/datasets/segvigen_256.py` | `SegviGenEmissive256` and its parquet, split and latent helpers |
 | `trellis2/trainers/flow_matching/segvigen_flow_trainer.py` | `SegviGenFlowTrainer`: precomputed DINOv3 tokens, per-shape mean loss, `pos_weight` (off in both runs) |
-| `trellis2/trainers/lightgen_hooks.py` | our training hooks, the same file as TRELLIS2's plus the peak-VRAM line and `disable_final_snapshot` |
 | `configs/gen/segvigen_emissive_256_release.yaml` | the release run's config (its data locations are set by the launcher or `train.sh`) |
 | `data_toolkit/{dual_grid_from_glb,encode_shape_from_dual_grid,encode_pbr_from_voxels}.py` | input producers from the `lightgen` branch |
 | `data_toolkit/predict_emission_mask_voxels.py` | the predictor: emission masks (and mask × albedo) from a Lightning checkpoint or a bridged file, the published sampler, seed rule and dump layout |
@@ -25,7 +24,8 @@ shows ours. Commands for users: `README.md`. Parent repo context: `../AGENTS.md`
 | `script/internal/gate/` | the refactor's checks (`README.md` there) |
 
 Ours inside upstream files: the registry lines (`trellis2/{models,datasets,trainers}/__init__.py`, `train.py`'s
-`TRAINER_MAP`), `train.py`'s hook imports and call sites, `basic.py` (the `train/lr` log, Hugging Face and
+`TRAINER_MAP`), our training hooks at the end of `trainers/callbacks.py` (TRELLIS2's section plus the PEAK_VRAM line
+and `OptionalFinalSnapshotCallback`) and `train.py`'s imports and call sites of them, `basic.py` (the `train/lr` log, Hugging Face and
 `.safetensors` loading, the `visualize_sample` guard), `utils/data_utils.py` (`ResumableSampler.set_epoch`),
 `trainers/data.py` (empty validation list), `flow_matching/mixins/image_conditioned.py` (the DINOv3 layer path),
 `setup.sh` (the `libjpeg-dev` line commented out), and, untouched by decision, `o-voxel/` and

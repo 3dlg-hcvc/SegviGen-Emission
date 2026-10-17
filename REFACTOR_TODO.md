@@ -37,6 +37,8 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 13. Environment files
 - [x] 14. Release layer: generic entry points for LightgenBench users
 - [x] 15. Docs
+- [ ] 15a–15g. Alignment with the TRELLIS2 refactor as Dongchen reviewed it (2026-10-17): hooks, dual grid,
+  predictor name, producers, release layer, docs, fixes
 - [ ] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 - [ ] 17. Cut-over (per D8)
 
@@ -244,8 +246,9 @@ Dongchen's answers of 2026-10-11 (all answered except D10):
   `ImageConditionedSparseFlowMatchingCFGTrainer`), `trellis2/datasets/segvigen_256.py` (a standalone
   `Dataset`, taking over the `lightgen_slat.py` helpers it needs, step 8b). TRELLIS2's D13 (answered
   2026-10-10) also moves our hooks out of upstream's `train.py`, `basic.py`, `callbacks.py` into files
-  of their own, only the registration lines staying: step 12 does the same here, so both forks of the
-  branch agree. Folding into upstream's classes (TEXGen's way) is not done.
+  of their own, only the registration lines staying: step 12 did the same here. At TRELLIS2's review
+  (Dongchen, 2026-10-17) they went to the end of upstream's `callbacks.py` instead, and step 15a follows.
+  Folding into upstream's classes (TEXGen's way) is not done.
 - [x] D14 `o-voxel/` stays untouched, our two edits included (`o_voxel/convert/volumetic_attr.py`,
   the `emissiveMipmaps` fix in `src/convert/volumetic_attr.cpp`), and so do our edits to upstream's
   `data_toolkit/{blender_script/dump_pbr.py,voxelize_pbr.py,encode_pbr_latent.py}` (as TRELLIS2's D14).
@@ -565,7 +568,7 @@ change.
 
 **Instructions:**
 
-**Result:** `trellis2/trainers/lightgen_hooks.py` = TRELLIS2's file plus the peak-VRAM line and a `SnapshotCallback` with
+**Result:** (moved to the end of `callbacks.py` at step 15a) `trellis2/trainers/lightgen_hooks.py` = TRELLIS2's file plus the peak-VRAM line and a `SnapshotCallback` with
 `disable_final_snapshot`; `callbacks.py` is upstream's again; kept in upstream files the same hunks TRELLIS2 kept. Training check
 identical in all three modes (also the `[train]`/`[val]`/`[ckpt-timing]` lines); live-code gate 20/20 + 20/20.
 
@@ -635,6 +638,28 @@ One doc of record, keeping upstream's attribution and citation (`README.md`).
 **Result:** Part 1 (this commit): `CLAUDE.md` is the doc of record (ours, the two runs and their checkpoints, the published chain,
 the environments with `BLACKWELL.md`'s facts, traps); `README.md` gets a SegviGen-Emission section on top (the LightgenBench
 commands, credits) with upstream's below; `BLACKWELL.md` goes. Part 2: the README's prediction section (`predict.sh`, the evaluator call).
+
+### 15a–15g. Alignment with the TRELLIS2 refactor as Dongchen reviewed it (2026-10-17)
+
+TRELLIS2's review (2026-10-12, -13, -17) changed its layout after this plan copied it; where both repos carry the
+same file the two plans make the same call. Dongchen chose A1–A6 and the fixes (D) of the comparison
+(workflow `wf_7d7ba83b-0d8`, 2026-10-17); its cleanups (B) are not taken. Checks run only where a change can
+reach them (Dongchen: skip checks for very small changes), on Solar nodes in parallel.
+
+- [x] 15a. Our training hooks to the end of upstream's `callbacks.py`, as TRELLIS2's (A1).
+- [ ] 15b. One dual-grid script: TRELLIS2's `data_toolkit/dual_grid_from_glb.py` (A2).
+- [ ] 15c. The predictor named `data_toolkit/predict_emission.py`, as TRELLIS2's (A3).
+- [ ] 15d. The release producers from `scripts_segvigen/` to `data_toolkit/` under TRELLIS2-style names (A4).
+- [ ] 15e. The release layer as TRELLIS2's two entry points, `prepare_lightgenbench.sh` and `run_chain.sh` (A5).
+- [ ] 15f. Docs in TRELLIS2's layout: README.md the doc of record, CLAUDE.md the agent part (A6).
+- [ ] 15g. The fixes the comparison found (D).
+
+**Results:**
+
+- 15a: `lightgen_hooks.py` goes; its hooks follow upstream's classes in `callbacks.py` exactly as TRELLIS2's section
+  (`diff` with TRELLIS2's file: the banner's fifth item, the PEAK_VRAM method, and `OptionalFinalSnapshotCallback`,
+  upstream's `SnapshotCallback` with `disable_final_snapshot`, named by me since one module cannot hold two
+  `SnapshotCallback`s). Training check identical (145/145, 74/74, 74/74, PEAK_VRAM printed); the test passes (5/5).
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 
