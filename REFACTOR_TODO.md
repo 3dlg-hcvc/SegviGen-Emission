@@ -648,7 +648,7 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
 
 - [x] 15a. Our training hooks to the end of upstream's `callbacks.py`, as TRELLIS2's (A1).
 - [x] 15b. One dual-grid script: TRELLIS2's `data_toolkit/dual_grid_from_glb.py` (A2).
-- [ ] 15c. The predictor named `data_toolkit/predict_emission.py`, as TRELLIS2's (A3).
+- [x] 15c. The predictor named `data_toolkit/predict_emission.py`, as TRELLIS2's (A3).
 - [ ] 15d. The release producers from `scripts_segvigen/` to `data_toolkit/` under TRELLIS2-style names (A4).
 - [ ] 15e. The release layer as TRELLIS2's two entry points, `prepare_lightgenbench.sh` and `run_chain.sh` (A5).
 - [ ] 15f. Docs in TRELLIS2's layout: README.md the doc of record, CLAUDE.md the agent part (A6).
@@ -665,6 +665,8 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
   come from a TexVerse-1K download's layout, so `prepare_inputs.sh` drops its TexVerse metadata argument; a failed
   shape now makes the script exit non-zero, which `prepare_inputs.sh` reports and the verify step leaves out.
   Check: 8 release shapes on Solar CPU, grids byte-identical to jupiter's `dataset_release_latents/dual_grid_256`.
+- 15c: `predict_emission_mask_voxels.py` → `predict_emission.py` (TRELLIS2's review shortened its own to that name),
+  callers and docs with it; no other change, so no GPU check (`--help` runs). Step 10's text keeps the old name.
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 

@@ -59,7 +59,7 @@ per validation the metrics and the EMA sum; `summarize_ckpt.py` records every sa
 
 ## 4. Predictor check (step 10)
 
-`star2/native_predict.sbatch <tree tgz> <name> kevin|ours` runs `data_toolkit/predict_emission_mask_voxels.py` on the
+`star2/native_predict.sbatch <tree tgz> <name> kevin|ours` runs `data_toolkit/predict_emission.py` on the
 published-chain gate's shapes (5 paper, 20 release, seed 0). `star2/native_full.sbatch <tree tgz> <name> paper|release
 <seed>` remakes one whole published test-set dump (paper 204 shapes, release 200; masks and mask × albedo) on the card
 that made it and compares it with `compare_masks.py --identical`. `star2/small_shapes.sbatch` runs the published chain

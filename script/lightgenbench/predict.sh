@@ -23,7 +23,7 @@ $PY -c "import json,sys,pandas as pd; u=pd.read_parquet(sys.argv[1]).index; prin
 cd "$REPO"
 for S in ${SEEDS//,/ }; do
   echo "[predict.sh] $(date +%T) seed $S, $(wc -l < "$OUT/$SPLIT.txt") $SPLIT shapes"
-  $PY data_toolkit/predict_emission_mask_voxels.py --run_config "$CFG" --ckpt "$CKPT" --sids_file "$OUT/$SPLIT.txt" \
+  $PY data_toolkit/predict_emission.py --run_config "$CFG" --ckpt "$CKPT" --sids_file "$OUT/$SPLIT.txt" \
     --seed "$S" --out_dir "$OUT/seed$S/mask" --ma_out_dir "$OUT/seed$S/ma" \
     --shape_latent_dir "$IN/shape_latents/shape_enc_next_dc_f16c32_fp16_256" \
     --pbr_latent_dir "$IN/pbr_latents/tex_enc_next_dc_f16c32_fp16_256" --cond_dirs "$IN/segvigen_cond_fp16"

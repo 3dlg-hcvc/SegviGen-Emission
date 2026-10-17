@@ -25,12 +25,12 @@ for r in a b; do
   fresh_cache pub_release_$r; python3 $G/dump_published.py --bridged_ckpt $J/outputs/segvigen_256_release_4h100/snapshots/step0044722.pt --sids_file $LOC/release.txt \
     --out_dir $LOC/out/pub_release_$r --draws 1 --seed 0 --steps 12 --shape_latent_dir $L/shape_latents/shape_enc_next_dc_f16c32_fp16_256 \
     --pbr_latent_dir $L/pbr_latents/tex_enc_next_dc_f16c32_fp16_256 --cond_dir $L/segvigen_cond_fp16 > $LOC/out/pub_release_$r.log 2>&1
-  fresh_cache nat_paper_$r; python3 data_toolkit/predict_emission_mask_voxels.py --run_config $J/outputs/segvigen_256_bw_6gpu/config.yaml \
+  fresh_cache nat_paper_$r; python3 data_toolkit/predict_emission.py --run_config $J/outputs/segvigen_256_bw_6gpu/config.yaml \
     --ckpt $J/outputs/segvigen_256_bw_6gpu/ckpts/step0023405.pt --sids_file $LOC/paper.txt --out_dir $LOC/out/nat_paper_$r \
     --shape_latent_dir $LV2/shape_latents/shape_enc_next_dc_f16c32_fp16_256 --pbr_latent_dir $LV2/pbr_latents/tex_enc_next_dc_f16c32_fp16_256 \
     --cond_dirs $F/segvigen_emissive/outputs/cond_fp16,$J/segvigen_emissive/dataset_direct/train_72k_agentic,$J/segvigen_emissive/dataset_direct/val_72k,$J/segvigen_emissive/dataset_direct/test_72k \
     > $LOC/out/nat_paper_$r.log 2>&1
-  fresh_cache nat_release_$r; python3 data_toolkit/predict_emission_mask_voxels.py --run_config $J/outputs/segvigen_256_release_4h100/config.yaml \
+  fresh_cache nat_release_$r; python3 data_toolkit/predict_emission.py --run_config $J/outputs/segvigen_256_release_4h100/config.yaml \
     --ckpt $J/outputs/segvigen_256_release_4h100/snapshots/step0044722.pt --sids_file $LOC/release.txt --out_dir $LOC/out/nat_release_$r \
     --shape_latent_dir $L/shape_latents/shape_enc_next_dc_f16c32_fp16_256 --pbr_latent_dir $L/pbr_latents/tex_enc_next_dc_f16c32_fp16_256 \
     --cond_dirs $L/segvigen_cond_fp16 > $LOC/out/nat_release_$r.log 2>&1

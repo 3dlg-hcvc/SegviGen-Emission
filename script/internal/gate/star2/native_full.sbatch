@@ -1,5 +1,5 @@
 #!/bin/bash
-# Step 10's full check: the native predictor (data_toolkit/predict_emission_mask_voxels.py) of a tree under test
+# Step 10's full check: the native predictor (data_toolkit/predict_emission.py) of a tree under test
 # remakes one published test-set dump (one run, one seed; masks and mask x albedo) in Kevin's jupiter miniforge env
 # on the card that made it, and compares both with the published dumps (compare_masks.py; the bar is identity).
 # paper: 204 test shapes, seeds 0-3 on A40, seed 4 on RTX 6000 Ada; release: 200 test shapes, seeds 0-4 on A40.
@@ -39,7 +39,7 @@ fi
 echo "[full] $(date) node=$(hostname) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader) run=$RUN seed=$SEED tree=$(cat $TREE/TREE_REV 2>/dev/null)"
 cd $TREE
 fail=0
-python3 -u data_toolkit/predict_emission_mask_voxels.py "${ARGS[@]}" --sids_file $SH --seed $SEED \
+python3 -u data_toolkit/predict_emission.py "${ARGS[@]}" --sids_file $SH --seed $SEED \
   --out_dir $LOC/out/mask --ma_out_dir $LOC/out/ma > $LOC/predict.log 2>&1 || fail=$((fail+1))
 tail -n 1 $LOC/predict.log
 mkdir -p "$H/out/$NAME" && cp $LOC/predict.log "$H/out/$NAME/" || { echo "FATAL: cannot write $H/out/$NAME"; exit 4; }

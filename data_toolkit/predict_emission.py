@@ -1,6 +1,6 @@
 """Predict emission masks with SegviGen-Emission on this repo's own code.
 
-    python data_toolkit/predict_emission_mask_voxels.py --run_config <config.yaml> --ckpt <checkpoint> \
+    python data_toolkit/predict_emission.py --run_config <config.yaml> --ckpt <checkpoint> \
         --sids_file <file> --out_dir <dir> --shape_latent_dir <dir> --pbr_latent_dir <dir> \
         --cond_dirs <dir>[,<dir> ...] [--draws 1] [--seed 0] [--steps 12] [--shard i --n_shards n] \
         [--ma_out_dir <dir>]

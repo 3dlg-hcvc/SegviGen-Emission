@@ -1,5 +1,5 @@
 #!/bin/bash
-# The native predictor (data_toolkit/predict_emission_mask_voxels.py) of a tree under test on one Solar GPU, on
+# The native predictor (data_toolkit/predict_emission.py) of a tree under test on one Solar GPU, on
 # the published-chain gate's shapes and inputs: 5 paper test shapes (the paper's bridged checkpoint and its
 # published inputs) and 20 release test shapes (the release snapshot, staged release inputs), seed 0, 12 steps,
 # mask and mask x albedo. env "kevin" = Kevin's jupiter miniforge env (that of every published dump), "ours" =
@@ -25,7 +25,7 @@ echo "[native] $(date) node=$(hostname) gpu=$(nvidia-smi --query-gpu=name --form
 cd $TREE
 fail=0
 LV2=$J/trellis2_bw/latents_v2
-$PY -u data_toolkit/predict_emission_mask_voxels.py --run_config $J/outputs/segvigen_256_bw_6gpu/config.yaml \
+$PY -u data_toolkit/predict_emission.py --run_config $J/outputs/segvigen_256_bw_6gpu/config.yaml \
   --ckpt $J/outputs/segvigen_256_bw_6gpu/ckpts/step0023405.pt --sids_file $G/paper_smoke5.txt \
   --out_dir $LOC/out/paper_smoke5 --ma_out_dir $LOC/out/paper_smoke5_ma \
   --shape_latent_dir $LV2/shape_latents/shape_enc_next_dc_f16c32_fp16_256 --pbr_latent_dir $LV2/pbr_latents/tex_enc_next_dc_f16c32_fp16_256 \
@@ -37,7 +37,7 @@ while read -r s; do
   cp $L/shape_latents/shape_enc_next_dc_f16c32_fp16_256/$s.npz $LOC/in/shape/ && cp $L/pbr_latents/tex_enc_next_dc_f16c32_fp16_256/$s.npz $LOC/in/pbr/ \
     && mkdir -p $LOC/in/cond/$s && cp $L/segvigen_cond_fp16/$s/cond_pos.pth $LOC/in/cond/$s/ || { echo "FATAL: staging $s"; exit 3; }
 done < $G/release_test20.txt
-$PY -u data_toolkit/predict_emission_mask_voxels.py --run_config $J/outputs/segvigen_256_release_4h100/config.yaml \
+$PY -u data_toolkit/predict_emission.py --run_config $J/outputs/segvigen_256_release_4h100/config.yaml \
   --ckpt $J/outputs/segvigen_256_release_4h100/snapshots/step0044722.pt --sids_file $G/release_test20.txt \
   --out_dir $LOC/out/release_test20 --ma_out_dir $LOC/out/release_test20_ma \
   --shape_latent_dir $LOC/in/shape --pbr_latent_dir $LOC/in/pbr --cond_dirs $LOC/in/cond \

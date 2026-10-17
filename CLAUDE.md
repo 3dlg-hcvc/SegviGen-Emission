@@ -18,7 +18,7 @@ shows ours. Commands for users: `README.md`. Parent repo context: `../AGENTS.md`
 | `configs/gen/segvigen_emissive_256_release.yaml` | the release run's config (its data locations are set by the launcher or `train.sh`) |
 | `data_toolkit/dual_grid_from_glb.py` | the dual grid from a GLB, TRELLIS2's file (the release: `--loader lightgenbench --check_cells`) |
 | `data_toolkit/{encode_shape_from_dual_grid,encode_pbr_from_voxels}.py` | the shape and PBR latents, from the `lightgen` branch |
-| `data_toolkit/predict_emission_mask_voxels.py` | the predictor: emission masks (and mask × albedo) from a Lightning checkpoint or a bridged file, the published sampler, seed rule and dump layout |
+| `data_toolkit/predict_emission.py` | the predictor: emission masks (and mask × albedo) from a Lightning checkpoint or a bridged file, the published sampler, seed rule and dump layout |
 | `scripts_segvigen/` | the lane's producers (`build_output_tex_latents_256.py`, `rekey_full_seg.py`, `newdata/`), the checkpoint bridge (`unrekey_for_eval.py`, `ckpt_step.py`), and `live_eval_one.py` / `live_eval_thumbs.py`, which the published dump chain imports |
 | `script/lightgenbench/` | entry points for LightgenBench users |
 | `script/internal/{alliance,star2}/` | the release run's launcher, snapshot sidecar and input jobs |
