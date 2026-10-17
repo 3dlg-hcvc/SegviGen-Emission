@@ -10,26 +10,27 @@ The released dataset is [3dlg-hcvc/LightgenBench](https://huggingface.co/dataset
 geometry comes from the TexVerse GLBs, so the input step also needs TexVerse and a checkout of the LightGen
 repository (whose mesh loader built the release). Environment: TRELLIS.2's (`setup.sh`: Python 3.10, torch 2.6 +
 CUDA 12.4, flash-attn, flex_gemm, o_voxel) with lightning 2.6; the conditioning step needs a transformers that loads
-BiRefNet (4.57 does, 5.1 does not). `PYTHON=` selects the interpreter for each script.
+BiRefNet (4.57 does, 5.1 does not). `PYTHON=` selects the interpreter for each call.
 
 ```bash
-# 1. the inputs: dual grid, shape and PBR latents, emission-mask latents, DINOv3 conditioning (one GPU, resumable)
-bash script/lightgenbench/prepare_inputs.sh <release_dir> <texverse_1k> <lightgen_root> <inputs_dir>
-# 2. the init: SegviGen's full_seg checkpoint, rekeyed
-bash script/lightgenbench/get_init.sh <inputs_dir>/full_seg_rekeyed.pt
-# 3. training: the release recipe (50,000 steps, effective batch 48), here 4 GPUs x 12; rerun to resume
-bash script/lightgenbench/train.sh <inputs_dir> <inputs_dir>/full_seg_rekeyed.pt outputs/segvigen_lightgenbench 4 12
+# 0. the release: download (gated: accept the terms, huggingface-cli login), check, unpack, index
+bash script/lightgenbench/prepare_lightgenbench.sh <download_dir> <data_root>
+# 1. the inputs (resumable; NUM_GPUS GPUs, default 4)
+TEXVERSE_1K=<dir> bash script/lightgenbench/run_chain.sh latents <data_root>   # dual grid, shape + PBR latents
+bash script/lightgenbench/run_chain.sh masks <data_root>                        # emission-mask latents
+bash script/lightgenbench/run_chain.sh cond <data_root>                         # DINOv3 conditioning, then the check
+# 2. training: the init, then the release recipe (50,000 steps, 4 GPUs x 12); RESUME=1 continues a run
+bash script/lightgenbench/run_chain.sh train <data_root>
 ```
 
 ## Prediction on LightgenBench
 
 ```bash
-# emission masks on the test split, seeds 0-4 as the release was scored (one GPU); any checkpoint in ckpts/ works
-bash script/lightgenbench/predict.sh <inputs_dir> outputs/segvigen_lightgenbench/config.yaml \
-  outputs/segvigen_lightgenbench/ckpts/<checkpoint>.ckpt predictions/segvigen_lightgenbench
+# emission masks on the test split, seeds 0-4 as the release was scored; CKPT is always named
+CKPT=outputs/segvigen_emissive_256_release/ckpts/<checkpoint>.ckpt bash script/lightgenbench/run_chain.sh predict <data_root>
 ```
 
-Each seed writes `seed<N>/mask/draw0/<uuid>.npz` (the predicted mask on the 256 grid) and `seed<N>/ma/draw0/` (mask ×
+Each seed writes `outputs/predict_test/seed<N>/mask/draw0/<uuid>.npz` (the predicted mask on the 256 grid) and `seed<N>/ma/draw0/` (mask ×
 the asset's albedo). The LightGen repository's point-sampled evaluator (`evaluation/pointsampled/pipeline.py --mode eval
 --gt_emission texture_only --voxel_pred_root <dir>`) scores the masks for IoU and the mask × albedo outputs for MAE and
 PSNR. The release run scored step 44,722, picked on the validation split: test IoU 0.1468 ± 0.0083 over the five seeds.

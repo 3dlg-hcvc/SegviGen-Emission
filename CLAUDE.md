@@ -15,7 +15,7 @@ shows ours. Commands for users: `README.md`. Parent repo context: `../AGENTS.md`
 | `trellis2/models/segvigen_flow.py` | `SegviGenSLatFlowModel`: upstream's `ElasticSLatFlowModel` with the PBR tokens packed after the noisy target |
 | `trellis2/datasets/segvigen_256.py` | `SegviGenEmissive256` and its parquet, split and latent helpers |
 | `trellis2/trainers/flow_matching/segvigen_flow_trainer.py` | `SegviGenFlowTrainer`: precomputed DINOv3 tokens, per-shape mean loss, `pos_weight` (off in both runs) |
-| `configs/gen/segvigen_emissive_256_release.yaml` | the release run's config (its data locations are set by the launcher or `train.sh`) |
+| `configs/gen/segvigen_emissive_256_release.yaml` | the release run's config (its data locations are set by the launcher or `run_chain.sh`) |
 | `data_toolkit/dual_grid_from_glb.py` | the dual grid from a GLB, TRELLIS2's file (the release: `--loader lightgenbench --check_cells`) |
 | `data_toolkit/{encode_shape_from_dual_grid,encode_pbr_from_voxels}.py` | the shape and PBR latents, from the `lightgen` branch |
 | `data_toolkit/predict_emission.py` | the predictor: emission masks (and mask × albedo) from a Lightning checkpoint or a bridged file, the published sampler, seed rule and dump layout |
@@ -41,7 +41,7 @@ and `OptionalFinalSnapshotCallback`) and `train.py`'s imports and call sites of 
 | release `segvigen_256_release_4h100` | `configs/gen/segvigen_emissive_256_release.yaml` via `script/internal/alliance/segvigen_256_release.sh` | jupiter `outputs/segvigen_256_release_4h100/snapshots/step0044722.pt` (bridged, sha256 `687c6bfd…acad6be`); `ckpts/last.ckpt` (step 49,270, full state) | fir job 60584213, 4 × H100, batch 4 × 12 | test IoU 0.1468 ± 0.0083 (5 seeds, per-part GT); `../docs/evaluation.md` § Released dataset |
 
 Both runs use the same training code and the init `full_seg_rekeyed.pt` (jupiter
-`datasets/dataset_release_latents/init/`, sha256 `ae4cb246…231981b`; `script/lightgenbench/get_init.sh` rebuilds it).
+`datasets/dataset_release_latents/init/`, sha256 `ae4cb246…231981b`; `script/lightgenbench/run_chain.sh train` rebuilds it in `data/ckpt_init/`).
 
 Keep stable: the registry names `SegviGenSLatFlowModel`, `SegviGenEmissive256`, `SegviGenFlowTrainer` (in every
 stored `config.yaml`) and every config key; the checkpoint layouts (Lightning `models.denoiser.*` with the duplicate

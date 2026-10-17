@@ -650,7 +650,7 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
 - [x] 15b. One dual-grid script: TRELLIS2's `data_toolkit/dual_grid_from_glb.py` (A2).
 - [x] 15c. The predictor named `data_toolkit/predict_emission.py`, as TRELLIS2's (A3).
 - [x] 15d. The release producers from `scripts_segvigen/` to `data_toolkit/` under TRELLIS2-style names (A4).
-- [ ] 15e. The release layer as TRELLIS2's two entry points, `prepare_lightgenbench.sh` and `run_chain.sh` (A5).
+- [x] 15e. The release layer as TRELLIS2's two entry points, `prepare_lightgenbench.sh` and `run_chain.sh` (A5).
 - [ ] 15f. Docs in TRELLIS2's layout: README.md the doc of record, CLAUDE.md the agent part (A6).
 - [ ] 15g. The fixes the comparison found (D).
 
@@ -674,6 +674,16 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
   (`build_cond_tree.py` finds the repo one level up now). `scripts_segvigen/` keeps the four files of Keep stable 4–5
   until step 17. Callers, the release config's comment and the docs follow; the gate's `dump_published.py`, a copy
   of the parent's script, does not. Check: each runs `--help` (the init script takes no options); 15e runs them all.
+- 15e: `script/lightgenbench/{prepare_lightgenbench,run_chain}.sh` replace `prepare_inputs.sh`, `get_init.sh`,
+  `train.sh`, `predict.sh`. `prepare` is TRELLIS2's (download, `splits.json` pin, tar checksums) but unpacks into
+  `<data_root>/release/<uuid>/` as released (our producers read that layout), then builds the index. `run_chain.sh`
+  has TRELLIS2's frame (`need()`, `per_gpu`, the log tee, wandb offline unless logged in, the allocator setting, the
+  temp-folder check, the resume refusal, the batch check) and our stages `latents` (TRELLIS2's), `masks`, `cond`
+  (ends with the verify step), `train` (rekeys the init when missing), `predict` (`CKPT`, seeds 0-4); `PYTHON=` stays
+  (two envs). Check (`gate/star2/lightgenbench_check.sbatch`, rewritten): a 4-shape download folder of the release's
+  own files through every stage on Solar L40S: dual grids byte-identical, latents within 3.4e-3, masks 2.7e-3,
+  conditioning 6.0e-4 mean, init identical, the test prediction within the bars of the published dump; and `prepare`
+  on jupiter's copy of the Hugging Face release (CPU): 78 tars checked, 36,826 shapes, its index equal to jupiter's.
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 
