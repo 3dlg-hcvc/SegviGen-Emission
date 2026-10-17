@@ -29,7 +29,7 @@ for s in ${STAGES//,/ }; do
              --resolution 256 --rank "$RANK" --world_size "$WORLD" || rc=1 ;;
     pbr)   "$PY" -u data_toolkit/encode_pbr_from_voxels.py --data_root "$ROOT" --parquet "$ROOT/meta/release_index.parquet" \
              --resolution 256 --rank "$RANK" --world_size "$WORLD" || rc=1 ;;
-    emit)  "$PY" -u scripts_segvigen/build_output_tex_latents_256.py --sid_list "$EMIT_LIST" \
+    emit)  "$PY" -u data_toolkit/encode_emission_mask_latents.py --sid_list "$EMIT_LIST" \
              --release_root "$REL" --out_root "$ROOT/segvigen_emission_mask_npz" --rank "$RANK" --world_size "$WORLD" || rc=1 ;;
     *) echo "unknown stage $s"; rc=2 ;;
   esac

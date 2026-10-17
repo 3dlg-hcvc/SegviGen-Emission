@@ -14,7 +14,7 @@
 #        EPOCH_STEPS_OVERRIDE=<n> (probes only: a short "epoch" so the snapshot sidecar gets exercised);
 #        STAGE=<dir> (probes only: another staged input dir, e.g. a small subset pack)
 #
-# Staged per cluster under ~/scratch/lightgen/segvigen_release/ (scripts_segvigen/newdata/verify_and_pack.py):
+# Staged per cluster under ~/scratch/lightgen/segvigen_release/ (data_toolkit/verify_and_pack.py):
 #   tars/latents.tar tars/cond_*.tar tars/SHA256SUMS   full_seg_rekeyed.pt   segvigen-lightning.bundle
 set -u
 CONFIG="configs/gen/segvigen_emissive_256_release.yaml"; NAME="segvigen_256_release_4h100"; BRANCH="retrain-newdata"

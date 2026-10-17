@@ -1,4 +1,4 @@
-"""Reverse of rekey_full_seg.py: turn a lightning-framework denoiser
+"""Reverse of init_segvigen_from_full_seg.py: turn a lightning-framework denoiser
 checkpoint back into the standalone SegviGen-emissive format so the existing
 evaluation pipeline can load it unchanged.
 
@@ -34,7 +34,7 @@ Accepts three input shapes for the denoiser's bare (unprefixed) state dict:
      ckpt["ema"]["state"][str(RATE)] (same "models.denoiser.<key>" keying,
      640 keys, confirmed 2026-08-26). Mirrors the standalone lane's
      epoch_XXXX.ckpt vs epoch_XXXX_ema.ckpt split.
-  3. An already-bare rekey (rekey_full_seg.py's own output format):
+  3. An already-bare rekey (init_segvigen_from_full_seg.py's own output format):
      {"denoiser": {<key>: tensor}}. No --ema support for this input shape
      (the bare rekey carries no EMA state).
 
@@ -84,7 +84,7 @@ def extract_bare_denoiser_state(payload, ema_rate: str = None):
             return bare, f"lightning state_dict ('{LIGHTNING_PREFIX}*' keys)"
 
     if isinstance(payload, dict) and isinstance(payload.get("denoiser"), dict):
-        return payload["denoiser"], "already-bare {'denoiser': ...} rekey (rekey_full_seg.py output)"
+        return payload["denoiser"], "already-bare {'denoiser': ...} rekey (init_segvigen_from_full_seg.py output)"
 
     if isinstance(payload, dict) and payload and all(isinstance(v, torch.Tensor) for v in payload.values()):
         return payload, "raw bare state dict (no wrapper)"

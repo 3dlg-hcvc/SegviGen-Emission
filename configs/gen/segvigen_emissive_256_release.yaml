@@ -5,7 +5,7 @@
 # segvigen_256_bw_6gpu; jupiter outputs/segvigen_256_bw_6gpu/config.yaml) unchanged: same architecture, init from full_seg, lr 1e-5,
 # unweighted loss, 50k steps, stock TRELLIS.2 pipeline.json stats. What differs:
 #   - every data location is a placeholder the launcher overrides (script/internal/alliance/segvigen_256_release.sh
-#     unpacks the tars into $SLURM_TMPDIR); inputs come from scripts_segvigen/newdata/
+#     unpacks the tars into $SLURM_TMPDIR); inputs come from the producers in data_toolkit/ (README.md)
 #   - effective batch stays 48: the paper ran 6 GPUs x 8, this lane runs 4 x H100 x 12
 #   - ckpt_last_every_n_steps 755 -> 759 (36,426 train shapes / 48; the launcher sets the real value
 #     from the usable count), wandb on (project LightGen)

@@ -8,4 +8,4 @@ set -euo pipefail
 OUT=${1:?out.pt}; PY=${PYTHON:-python}
 REPO=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
 SRC=$($PY -c 'from huggingface_hub import hf_hub_download; print(hf_hub_download("fenghora/SegviGen", "full_seg.ckpt"))')
-$PY "$REPO/scripts_segvigen/rekey_full_seg.py" "$SRC" "$OUT"
+$PY "$REPO/data_toolkit/init_segvigen_from_full_seg.py" "$SRC" "$OUT"

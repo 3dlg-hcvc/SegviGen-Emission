@@ -37,7 +37,7 @@ PSNR. The release run scored step 44,722, picked on the validation split: test I
 ## Credits
 
 SegviGen (MIT License, Copyright (c) 2026 Lin Li): the model design, the `full_seg` checkpoint
-(Hugging Face `fenghora/SegviGen`) and the thumbnail preprocessing in `scripts_segvigen/newdata/thumbnail_cond.py`.
+(Hugging Face `fenghora/SegviGen`) and the thumbnail preprocessing in `data_toolkit/thumbnail_cond.py`.
 TRELLIS.2 (MIT): everything upstream; cite it as below.
 
 ---

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Conditioning check (step 11c): scripts_segvigen/newdata/build_cond_tree.py of a tree under test on one Solar
+# Conditioning check (step 11c): data_toolkit/build_cond_tree.py of a tree under test on one Solar
 # GPU in Kevin's jupiter miniforge env (the env of the release's conditioning): routes 1-2 (reuse, convert) on
 # cond_io6.txt and route 3 (build) on cond_build5.txt, into $HOME/segvigen_refactor/out/<name>/cond/.
 # "old" = a tree whose route 3 imports the original SegviGen tree (the falas deploy), "new" = the port.
@@ -22,9 +22,9 @@ OLD=(); [ "$WHICH" = old ] && OLD=(--segvigen_repo $F/segvigen_emissive)
 echo "[cond_check] $(date) node=$(hostname) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader) which=$WHICH tree=$(cat $TREE/TREE_REV 2>/dev/null)"
 cd $TREE
 fail=0
-python3 -u scripts_segvigen/newdata/build_cond_tree.py --sid_list $G/cond_io6.txt --release $J/datasets/dataset_release \
+python3 -u data_toolkit/build_cond_tree.py --sid_list $G/cond_io6.txt --release $J/datasets/dataset_release \
   --out $LOC/out/cond --routes reuse,convert "${ROOTS[@]}" > $LOC/out/io.log 2>&1 || fail=$((fail+1))
-python3 -u scripts_segvigen/newdata/build_cond_tree.py --sid_list $G/cond_build5.txt --release $J/datasets/dataset_release \
+python3 -u data_toolkit/build_cond_tree.py --sid_list $G/cond_build5.txt --release $J/datasets/dataset_release \
   --out $LOC/out/cond --routes build "${ROOTS[@]}" "${OLD[@]}" > $LOC/out/build.log 2>&1 || fail=$((fail+1))
 grep -h DONE $LOC/out/io.log $LOC/out/build.log
 mkdir -p $H/out/$NAME; cp -r $LOC/out/. $H/out/$NAME/

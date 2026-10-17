@@ -22,15 +22,15 @@ REPO=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
 mkdir -p "$OUT"; OUT=$(readlink -f "$OUT")
 cd "$REPO"
 say() { echo "[prepare] $(date +%T) $*"; }
-say "metadata";          $PY scripts_segvigen/newdata/build_metadata.py --release "$REL" --out "$OUT/meta" --link_voxels "$OUT"
+say "metadata";          $PY data_toolkit/build_lightgenbench_index.py --release "$REL" --out "$OUT/meta" --link_voxels "$OUT"
 say "dual grid";         $PY data_toolkit/dual_grid_from_glb.py --parquet "$OUT/meta/release_index.parquet" --glb_root "$GLB" \
                            --out_root "$OUT" --loader lightgenbench --lightgen_repo "$LG" --check_cells \
                            || say "some shapes have no grid: $OUT/dual_grid_256/failed_rank0.txt (verify leaves them out)"
 say "shape latents";     $PY data_toolkit/encode_shape_from_dual_grid.py --data_root "$OUT" --parquet "$OUT/meta/release_index.parquet" --resolution 256
 say "PBR latents";       $PY data_toolkit/encode_pbr_from_voxels.py --data_root "$OUT" --parquet "$OUT/meta/release_index.parquet" --resolution 256
-say "emission masks";    $PY scripts_segvigen/build_output_tex_latents_256.py --sid_list "$OUT/meta/release_all.txt" --release_root "$REL" \
+say "emission masks";    $PY data_toolkit/encode_emission_mask_latents.py --sid_list "$OUT/meta/release_all.txt" --release_root "$REL" \
                            --out_root "$OUT/segvigen_emission_mask_npz" --rank 0 --world_size 1
-say "conditioning";      $PY scripts_segvigen/newdata/build_cond_tree.py --sid_list "$OUT/meta/release_all.txt" --release "$REL" \
+say "conditioning";      $PY data_toolkit/build_cond_tree.py --sid_list "$OUT/meta/release_all.txt" --release "$REL" \
                            --out "$OUT/segvigen_cond_fp16" --routes build
-say "verify";            $PY scripts_segvigen/newdata/verify_and_pack.py verify --root "$OUT" --workers "$W"
+say "verify";            $PY data_toolkit/verify_and_pack.py verify --root "$OUT" --workers "$W"
 say "done: $OUT"

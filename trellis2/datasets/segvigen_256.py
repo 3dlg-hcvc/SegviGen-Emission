@@ -4,7 +4,7 @@ Owner correction (board lightning_port, 2026-08-26): the from-scratch
 fullseg finetune trains on the 256-native voxel grid directly, reusing the
 team's shared production shape+pbr latents (Dongchen's latents_v2 tree, the
 same ones the emission DiT baseline reads) plus OUR new emission-mask npz
-(scripts_segvigen/build_output_tex_latents_256.py, job 8) as the target.
+(data_toolkit/encode_emission_mask_latents.py, job 8) as the target.
 This REPLACES the 512 lane's SegviGenEmissiveDirect (tag pre-refactor) for the
 imminent launch -- do not confuse the two; dataset_direct's own
 output_tex_slat.pth is a different (512-resolution, upsampled) artifact.
@@ -237,7 +237,7 @@ class SegviGenEmissive256(Dataset):
               f"{len(self.sids)} usable (SKIPPED: {n_skip} -- loud by design)")
 
         # Per-sample token count for BalancedResumableSampler. Prefer the
-        # precomputed manifest (scripts_segvigen/newdata/verify_and_pack.py writes
+        # precomputed manifest (data_toolkit/verify_and_pack.py writes
         # <emit_dir>/token_counts.json); opening 36k npz headers over NFS at
         # every construction was the other half of the dead-GPU startup cost.
         manifest = {}

@@ -19,7 +19,7 @@ No normalization statistics are computed: training reuses the shipped TRELLIS.2-
 statistics. A shape whose output already exists is skipped, so a killed array task resumes.
 
 Usage (one array task):
-  python scripts_segvigen/build_output_tex_latents_256.py --sid_list <file> --release_root <dataset_release> \
+  python data_toolkit/encode_emission_mask_latents.py --sid_list <file> --release_root <dataset_release> \
       --out_root <latents root>/segvigen_emission_mask_npz --rank 0 --world_size 10
 """
 import argparse

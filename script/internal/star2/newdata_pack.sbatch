@@ -12,11 +12,11 @@ PREV="${5:-}"   # usable.txt of the pack already in tars/: keep its cond tars, p
 PY="$HOME/envs/trellis2/bin/python"
 cd "$CODE"
 echo "[pack] $(date) node=$(hostname) workers=$W code=$(git rev-parse --short HEAD)"
-"$PY" -u scripts_segvigen/newdata/verify_and_pack.py verify --root "$ROOT" --workers "$W"
+"$PY" -u data_toolkit/verify_and_pack.py verify --root "$ROOT" --workers "$W"
 echo "[pack] dropped by reason:"; cut -f2 "$ROOT/meta/dropped.tsv" | cut -d: -f1 | sort | uniq -c || true
 if [ -n "$PREV" ]; then
-  "$PY" -u scripts_segvigen/newdata/verify_and_pack.py pack --root "$ROOT" --workers "$W" --incremental_from "$PREV"
+  "$PY" -u data_toolkit/verify_and_pack.py pack --root "$ROOT" --workers "$W" --incremental_from "$PREV"
 else
-  "$PY" -u scripts_segvigen/newdata/verify_and_pack.py pack --root "$ROOT" --workers "$W" --cond_shards "$SHARDS" --overwrite
+  "$PY" -u data_toolkit/verify_and_pack.py pack --root "$ROOT" --workers "$W" --cond_shards "$SHARDS" --overwrite
 fi
 ls -la "$ROOT/tars"; echo "[pack] $(date) done"

@@ -19,7 +19,8 @@ shows ours. Commands for users: `README.md`. Parent repo context: `../AGENTS.md`
 | `data_toolkit/dual_grid_from_glb.py` | the dual grid from a GLB, TRELLIS2's file (the release: `--loader lightgenbench --check_cells`) |
 | `data_toolkit/{encode_shape_from_dual_grid,encode_pbr_from_voxels}.py` | the shape and PBR latents, from the `lightgen` branch |
 | `data_toolkit/predict_emission.py` | the predictor: emission masks (and mask × albedo) from a Lightning checkpoint or a bridged file, the published sampler, seed rule and dump layout |
-| `scripts_segvigen/` | the lane's producers (`build_output_tex_latents_256.py`, `rekey_full_seg.py`, `newdata/`), the checkpoint bridge (`unrekey_for_eval.py`, `ckpt_step.py`), and `live_eval_one.py` / `live_eval_thumbs.py`, which the published dump chain imports |
+| `data_toolkit/{build_lightgenbench_index,encode_emission_mask_latents,build_cond_tree,thumbnail_cond,verify_and_pack,init_segvigen_from_full_seg}.py` | the release producers: the index and split rows, the emission-mask latents, the DINOv3 conditioning (SegviGen's thumbnail preprocessing), the check and pack, the init from SegviGen's `full_seg` |
+| `scripts_segvigen/` | the checkpoint bridge (`unrekey_for_eval.py`, `ckpt_step.py`) and `live_eval_one.py` / `live_eval_thumbs.py`, which the published dump chain imports; these keep their paths until the cut-over (step 17) |
 | `script/lightgenbench/` | entry points for LightgenBench users |
 | `script/internal/{alliance,star2}/` | the release run's launcher, snapshot sidecar and input jobs |
 | `script/internal/gate/` | the refactor's checks (`README.md` there) |

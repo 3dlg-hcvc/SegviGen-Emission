@@ -19,7 +19,7 @@ thumbnail is listed and left out.
 Resumable (an existing output is skipped), atomic writes, a JSON report per rank.
 
 Usage:
-    python scripts_segvigen/newdata/build_cond_tree.py --sid_list <meta>/release_all.txt \
+    python data_toolkit/build_cond_tree.py --sid_list <meta>/release_all.txt \
         --release <dataset_release> --out <latents root>/segvigen_cond_fp16 \
         [--paper_fp16_root <dir> --dataset_direct <dir>] [--routes reuse,convert | --routes build]
 """
@@ -59,7 +59,7 @@ class Builder:
 
     def _load(self):
         here = os.path.dirname(os.path.abspath(__file__))
-        sys.path.insert(0, os.path.abspath(os.path.join(here, "..", "..")))   # this repo's trellis2
+        sys.path.insert(0, os.path.abspath(os.path.join(here, "..")))   # this repo's trellis2
         sys.path.insert(0, here)
         from thumbnail_cond import img_to_cond, img_to_cond_repair
         from trellis2.pipelines.rembg import BiRefNet

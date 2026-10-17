@@ -649,7 +649,7 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
 - [x] 15a. Our training hooks to the end of upstream's `callbacks.py`, as TRELLIS2's (A1).
 - [x] 15b. One dual-grid script: TRELLIS2's `data_toolkit/dual_grid_from_glb.py` (A2).
 - [x] 15c. The predictor named `data_toolkit/predict_emission.py`, as TRELLIS2's (A3).
-- [ ] 15d. The release producers from `scripts_segvigen/` to `data_toolkit/` under TRELLIS2-style names (A4).
+- [x] 15d. The release producers from `scripts_segvigen/` to `data_toolkit/` under TRELLIS2-style names (A4).
 - [ ] 15e. The release layer as TRELLIS2's two entry points, `prepare_lightgenbench.sh` and `run_chain.sh` (A5).
 - [ ] 15f. Docs in TRELLIS2's layout: README.md the doc of record, CLAUDE.md the agent part (A6).
 - [ ] 15g. The fixes the comparison found (D).
@@ -667,6 +667,13 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
   Check: 8 release shapes on Solar CPU, grids byte-identical to jupiter's `dataset_release_latents/dual_grid_256`.
 - 15c: `predict_emission_mask_voxels.py` → `predict_emission.py` (TRELLIS2's review shortened its own to that name),
   callers and docs with it; no other change, so no GPU check (`--help` runs). Step 10's text keeps the old name.
+- 15d: into `data_toolkit/` (`git mv`, no code change but one path): `newdata/build_metadata.py` →
+  `build_lightgenbench_index.py` (the job of TRELLIS2's file of that name; its outputs differ), `build_output_tex_latents_256.py`
+  → `encode_emission_mask_latents.py`, `rekey_full_seg.py` → `init_segvigen_from_full_seg.py` (its output keeps its
+  name), and `build_cond_tree.py`, `thumbnail_cond.py`, `verify_and_pack.py` under their own names
+  (`build_cond_tree.py` finds the repo one level up now). `scripts_segvigen/` keeps the four files of Keep stable 4–5
+  until step 17. Callers, the release config's comment and the docs follow; the gate's `dump_published.py`, a copy
+  of the parent's script, does not. Check: each runs `--help` (the init script takes no options); 15e runs them all.
 
 ### 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 

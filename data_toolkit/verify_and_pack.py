@@ -15,8 +15,8 @@ pack     Tars of the usable shapes under <root>/tars/ (few large files: the clus
          and SHA256SUMS over them.
 
 Usage:
-    python scripts_segvigen/newdata/verify_and_pack.py verify --root <latents root> --workers 16
-    python scripts_segvigen/newdata/verify_and_pack.py pack   --root <latents root> --cond_shards 8
+    python data_toolkit/verify_and_pack.py verify --root <latents root> --workers 16
+    python data_toolkit/verify_and_pack.py pack   --root <latents root> --cond_shards 8
 """
 import argparse
 import hashlib

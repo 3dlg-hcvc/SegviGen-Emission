@@ -17,7 +17,7 @@ and, with --link_voxels, the flat symlink trees the paper's encoders read:
 Row order is train, val, test, each in the order of splits.json (sorted there).
 
 Usage:
-    python scripts_segvigen/newdata/build_metadata.py \
+    python data_toolkit/build_lightgenbench_index.py \
         --release /3dlg-jupiter-project/lightgen/datasets/dataset_release \
         --out /3dlg-jupiter-project/lightgen/datasets/dataset_release_latents/meta \
         --link_voxels /3dlg-jupiter-project/lightgen/datasets/dataset_release_latents
