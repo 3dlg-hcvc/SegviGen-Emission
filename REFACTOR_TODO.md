@@ -706,11 +706,11 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
 
 - [x] The full live-code gate, the published-chain gate and the training check on the branch head,
   against the `pre-refactor` baselines; the tests.
-- [ ] Ask Dongchen to review the branch (`git diff pre-refactor`, the plan's Results); stop until he
-  gives the go.
-- [ ] With the go: fast-forward `release` (today `bf0e9de`, an ancestor of `pre-refactor`) to the
-  reviewed head. A push to `origin` (Kevin's `QhelDIV/segvigen-lightning`) needs its own go and
-  push access.
+- [x] Ask Dongchen to review the branch (`git diff pre-refactor`, the plan's Results); stop until he
+  gives the go. (2026-10-17: "merge into release".)
+- [x] With the go: fast-forward `release` (was `bf0e9de`, an ancestor of `pre-refactor`) to the
+  reviewed head (2026-10-17, local only). A push to `origin` (Kevin's `QhelDIV/segvigen-lightning`) needs its own
+  go and push access; the parent's registration below needs the commit on a remote.
 - [ ] In the parent, once the commit is reachable from a remote: one commit with the `.gitmodules`
   entry and the gitlink together, and `/SegviGen-Emission/` out of `.git/info/exclude`; per D19, the
   old submodule's removal in its own commit.
