@@ -40,7 +40,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 15a–15g. Alignment with the TRELLIS2 refactor as Dongchen reviewed it (2026-10-17): hooks, dual grid,
   predictor name, producers, release layer, docs, fixes
 - [x] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
-- [ ] 17. Cut-over (per D8)
+- [x] 17. Cut-over (per D8): closed without moving anything (Dongchen, 2026-10-17)
 
 ## How we work
 
@@ -743,15 +743,22 @@ the SegviGen-Emission row in `../AGENTS.md` § Naming (its display name is Dongc
 
 ### 17. Cut-over (per D8)
 
-- [ ] The parent's chain (Keep stable 9) from Kevin's falas checkout to this repo:
+- [x] The parent's chain (Keep stable 9) from Kevin's falas checkout to this repo:
   `dump_segvigen256_voxels.py`, `segvigen256/{bridge,dump_shard}.sbatch.tmpl`, `release_dump.sbatch`,
-  `overnight_driver.py`.
-- [ ] The Alliance clones and `hedge.sh` to `release`.
-- [ ] The jupiter copies stay frozen.
+  `overnight_driver.py`. Not moved: not needed (Dongchen).
+- [x] The Alliance clones and `hedge.sh` to `release`. Not moved: not needed (Dongchen).
+- [x] The jupiter copies stay frozen.
 
-**Instructions:**
+**Instructions:** Dongchen, 2026-10-17: the published-prediction chain "is not needed"; the Alliance clones are not
+needed either; "sure close it".
 
-**Result:**
+**Result:** Closed without a move. The published chain keeps importing from Kevin's falas checkout and still works;
+this repo's `data_toolkit/predict_emission.py` reproduces its dumps (step 10). The Alliance clones stay on
+`retrain-newdata`, and `script/internal/alliance/segvigen_256_release.sh` still sets `BRANCH="retrain-newdata"` and
+pulls a git bundle, so it trains the pre-refactor code: to retrain on Alliance, point it at `release` (now on GitHub)
+and dry-run it there first; untested on fir since the refactor. No number depends on either: the release model
+trained on fir (job 60584213), but every published prediction and score was made on Solar and the workstation, and
+both checkpoints of record are on jupiter.
 
 ## Later, only if wanted (behavior changes, one step each)
 
