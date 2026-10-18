@@ -39,7 +39,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 15. Docs
 - [x] 15a–15g. Alignment with the TRELLIS2 refactor as Dongchen reviewed it (2026-10-17): hooks, dual grid,
   predictor name, producers, release layer, docs, fixes
-- [ ] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
+- [x] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 - [ ] 17. Cut-over (per D8)
 
 ## How we work
@@ -711,19 +711,19 @@ reach them (Dongchen: skip checks for very small changes), on Solar nodes in par
 - [x] With the go: fast-forward `release` (was `bf0e9de`, an ancestor of `pre-refactor`) to the
   reviewed head (2026-10-17, local only). A push to `origin` (Kevin's `QhelDIV/segvigen-lightning`) needs its own
   go and push access; the parent's registration below needs the commit on a remote.
-- [ ] In the parent, once the commit is reachable from a remote: one commit with the `.gitmodules`
+- [x] In the parent, once the commit is reachable from a remote: one commit with the `.gitmodules`
   entry and the gitlink together, and `/SegviGen-Emission/` out of `.git/info/exclude`; per D19, the
   old submodule's removal in its own commit.
-- [ ] Parent docs: `../AGENTS.md` (the submodule table lists `SegviGen-emissive/`; layout, env and
+- [x] Parent docs: `../AGENTS.md` (the submodule table lists `SegviGen-emissive/`; layout, env and
   task tables, the docs index), `../docs/baselines/segvigen.md`, `../docs/baselines/segvigen-live-training.md`
   (§ Where the code is), `../docs/status/refactor.md` (the SegviGen-Emission bullet),
   `../docs/status/checkpoints.md`, `../docs/evaluation.md`; a path-scoped rule
   `../.claude/rules/segvigen.md` beside `texgen.md` and `trellis2.md` (propose it); a SegviGen-Emission row in
   `../AGENTS.md` § Naming (its display name, which Keep stable 10 relies on), proposed to Dongchen first.
-- [ ] Outside the repo: the compute-access skill's `hedge.sh` if step 5b moved the release launcher
+- [x] Outside the repo: the compute-access skill's `hedge.sh` if step 5b moved the release launcher
   (step 5b did: the launcher is `script/internal/alliance/segvigen_256_release.sh`; `hedge.sh` takes the path as an
   argument, so only its callers' notes change).
-- [ ] Parent doc paths after step 5b: `../docs/baselines/segvigen-live-training.md:126-127` names
+- [x] Parent doc paths after step 5b: `../docs/baselines/segvigen-live-training.md:126-127` names
   `script/star2/newdata_*.sbatch` and `script/alliance/segvigen_256_release.sh`.
 
 **Instructions:**
@@ -735,7 +735,11 @@ passes (5/5; run at step 7 and at 15a). Steps 15a–15g followed (Dongchen, 2026
 changes can reach, in parallel on Solar A40s and the 4090: live-code gate 20/20 and 20/20, published chain 5/5 and
 20/20 byte for byte (bridge 640/640, `ckpt_step` reads), the predictor 5/5 and 20/20 byte for byte, the conditioning
 check 11/11 identical to step 11c; the training check (15a) and the release-layer check (15e) ran at their steps, and
-nothing either reaches changed after them. Waiting for Dongchen's review.
+nothing either reaches changed after them. Dongchen's go (2026-10-17, "merge into release"): `release` fast-forwarded and
+pushed to `QhelDIV/segvigen-lightning` (his account needed Kevin's collaborator invite, accepted 2026-10-17). In the
+parent: `40baa1a` registers `SegviGen-Emission/` (branch `release`), `158f939` removes `SegviGen-emissive/` (D19),
+`026b80e` updates the docs and adds `.claude/rules/segvigen.md` (proposed); no skill names the launcher path. Not done:
+the SegviGen-Emission row in `../AGENTS.md` § Naming (its display name is Dongchen's to choose).
 
 ### 17. Cut-over (per D8)
 
