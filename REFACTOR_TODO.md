@@ -42,6 +42,15 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 - [x] 16. Dongchen's review, the merge into `release` (D4, D11) and parent registration (needs his go)
 - [x] 17. Cut-over (per D8): closed without moving anything (Dongchen, 2026-10-17)
 
+Cleanup (Dongchen, 2026-10-18; § Cleanup below). Order: 18, 19, 20, 21, 22.
+
+- [ ] 18. This plan committed; tag `checks-tooling` on it (D22)
+- [ ] 19. The cut: the check tooling, the test, our cluster launchers, `scripts_segvigen/`, `CLAUDE.md` and this
+  plan leave `release`
+- [ ] 20. Push `release` and the tags (needs Dongchen's go)
+- [ ] 21. Parent: what `CLAUDE.md` held, the references, the pointer (push needs Dongchen's go)
+- [ ] 22. Leftovers outside git: the worktree, its branch, the check data on three machines (D24; needs Dongchen's go)
+
 ## How we work
 
 - One step = one commit with one purpose. Removals and moves never share a commit with a behavior
@@ -223,9 +232,8 @@ Carried over from TEXGen and TRELLIS2 (say if one does not apply here):
 - D9 Upstream code we do not use stays untouched, files and blocks alike (upstream's configs, among
   them `slat_flow_imgshape2tex_dit_1_3B_512_bf16.yaml`; upstream's `data_toolkit/` scripts; models,
   pipelines, samplers, the demo files of D12).
-- D10 (open, before publishing) Internal scripts in the published code: `script/internal/` holds our
-  Slurm accounts and paths. Publish as is, publish a snapshot without it, or move it to the parent
-  repo? Recommended: a published snapshot without it.
+- D10 Internal scripts in the published code. Answered 2026-10-18 (Dongchen: "just remove the unneeded or
+  testing files that we generated or the gated files"): they leave `release`, steps 18–22; D22–D24 below.
 
 Dongchen's answers of 2026-10-11 (all answered except D10):
 
@@ -278,6 +286,29 @@ Dongchen's answers of 2026-10-11 (all answered except D10):
   `outputs/segvigen_256_bw_6gpu/ckpts/step0023405_snapshot.ckpt` (10.5 GB) and `step0023405.pt` (the
   bridged file, 2.6 GB), `config.yaml` = `bf0e9de`'s config, `SHA256SUMS` on both ends, a MANIFEST
   row; `df` first, stop under 50 GB free.
+
+Answered for the cleanup (Dongchen, 2026-10-18: the three recommendations, and "everything, incl. pushes" for
+steps 18–22 without asking again):
+
+- [x] D22 Where the removed files stay reachable. Recommended: annotated tag `checks-tooling` on the last commit
+  that has them (TEXGen's name for the same tag), pushed with `release` in step 20 together with the local
+  `pre-refactor` (the code of the paper and release runs, which kept comments name);
+  `git checkout checks-tooling -- script/internal` brings the checks back. Alternative (TEXGen's): a second
+  branch keeps the internal files and the parent tracks it, `release` being the clean cut; more to keep in
+  step, and the parent tracks `release` already.
+- [x] D23 `CLAUDE.md`. Recommended: it leaves the tree with the rest, as in TEXGen's `release`. What lasts
+  (§ Environments, § Runs of record, § The published predictions, § Traps) moves to the parent's
+  `docs/baselines/segvigen-live-training.md`, and the parent rule `.claude/rules/segvigen.md`, which loads for
+  `SegviGen-Emission/**`, points there. Its other sections go with what they describe (§ Keep stable,
+  § Checking a code change) or repeat the README (§ Commands, § Source map). Alternative: keep a short
+  `CLAUDE.md` (TRELLIS.2-Emission and Hunyuan3D-Emission still carry theirs).
+- [x] D24 The check data outside the repo, 4.2 GB in all: the `pre-refactor` baselines, tree archives, logs and a
+  private pyarrow, in the workstation's `/local-scratch/localhome/dya78/lightgen_eval_local/segvigen_refactor_checks/`
+  (3.2 GB), star2 `~/segvigen_refactor/` (561 MB) and sp4090 `~/lightgen_eval_local/segvigen_refactor_checks/`
+  (488 MB). No published number depends on them; the verdicts are in `script/internal/gate/README.md` (tag
+  `checks-tooling`), and a later check would rebuild its baselines from `pre-refactor`. Recommended: delete.
+  Alternative: one tar on jupiter `archive/2026-10-18-segvigen-refactor-checks/` (`df` first). Nothing else is
+  left: every `gate/star2/*.sbatch` removes its node-local `/localscratch/dya78/sv_*` folder on exit (`trap`).
 
 ## Done
 
@@ -760,7 +791,140 @@ and dry-run it there first; untested on fir since the refactor. No number depend
 trained on fir (job 60584213), but every published prediction and score was made on Solar and the workstation, and
 both checkpoints of record are on jupiter.
 
+## Cleanup: the files we generated leave `release` (2026-10-18)
+
+Dongchen, 2026-10-18: "What I mean is to just remove the unneeded or testing files that we generated or the gated
+files." The goal is a tree like upstream's: TRELLIS.2-lightning's 15 top-level entries (`git ls-tree --name-only
+98c2548`), our edits inside them, and only those files of ours that a LightgenBench user runs. No code moves, no
+renames, no history rewrite. A file goes only if nothing kept imports or calls it.
+
+58 files are ours on top of `98c2548` (`git diff --name-only --diff-filter=A 98c2548 release`):
+
+- **Kept (16):** `configs/gen/segvigen_emissive_256_release.yaml`; `trellis2/{models/segvigen_flow.py,
+  datasets/segvigen_256.py, trainers/flow_matching/segvigen_flow_trainer.py}`; `data_toolkit/{build_cond_tree,
+  build_lightgenbench_index, dual_grid_from_glb, encode_emission_mask_latents, encode_pbr_from_voxels,
+  encode_shape_from_dual_grid, init_segvigen_from_full_seg, predict_emission, thumbnail_cond, verify_and_pack}.py`;
+  `script/lightgenbench/{prepare_lightgenbench,run_chain}.sh`. Our edits in upstream's files stay too (README
+  § What differs lists them).
+- **Removed (42):** `script/internal/gate/` (29), `script/internal/alliance/` (2), `script/internal/star2/` (4),
+  `scripts_segvigen/` (4), `data_toolkit/test_checkpoint_cadence.py`, `CLAUDE.md`, `REFACTOR_TODO.md`.
+
+How these steps run: one commit per purpose, as before. Nothing that runs changes, so no GPU check (Dongchen
+2026-10-17: checks only where a change can reach). A push, a parent commit and a deletion outside the repo each
+wait for Dongchen's go. Parent commits are made from a temporary worktree of the parent's `origin/main`, as
+`ab796b3` was: the main checkout carries another session's uncommitted `AGENTS.md` edit.
+
+### 18. This plan committed; tag `checks-tooling` (D22)
+
+- [x] After Dongchen has read this section and answered D22–D24: commit `REFACTOR_TODO.md` on `release`.
+- [ ] `git tag -a checks-tooling -m "Last commit with the refactor's checks, cluster launchers and plan"` on that
+  commit. Local until step 20.
+
+**Instructions:**
+
+**Result:**
+
+### 19. The cut (two commits)
+
+19a, the code side:
+
+- [ ] `git rm -r script/internal scripts_segvigen data_toolkit/test_checkpoint_cadence.py` (40 files):
+  - `script/internal/gate/` (29): the refactor's checks, their shape lists, their two `sitecustomize.py`.
+  - `data_toolkit/test_checkpoint_cadence.py`: the one test (5 cases on `build_checkpoint_callback`).
+  - `script/internal/alliance/{segvigen_256_release.sh,snapshot_sidecar.sh}`: the release run's Alliance
+    launcher (our accounts and `$HOME/scratch` paths) and its snapshot sidecar. `run_chain.sh train` is the
+    public recipe of the same run. To retrain on Alliance later, restore the launcher from the tag and point
+    its `BRANCH` (`retrain-newdata` today) at `release` (step 17's Result).
+  - `script/internal/star2/newdata_{dual_grid,encode,cond,pack}.sbatch`: the Solar jobs that built the release
+    inputs; `run_chain.sh latents|masks|cond` does the same.
+  - `scripts_segvigen/{unrekey_for_eval,ckpt_step}.py` (only `snapshot_sidecar.sh` calls them) and
+    `scripts_segvigen/{live_eval_one,live_eval_thumbs}.py` (only `gate/dump_published.py` imports them). Keep
+    stable 4–5 no longer hold since step 17 closed without a move: the parent's published chain imports Kevin's
+    falas copies through `PROBE`, and `git grep` in the parent finds no path into this submodule's
+    `scripts_segvigen/`.
+  - Then `rm -rf scripts_segvigen`: the ignored `scripts_segvigen/newdata/__pycache__/` (left by step 15d) stays
+    on disk after `git rm`.
+- [ ] References in kept files, same commit:
+  - `README.md:152,154`: the `scripts_segvigen/` and `script/internal/` rows of § Repository go.
+  - `configs/gen/segvigen_emissive_256_release.yaml:7-8`: "a placeholder the launcher overrides
+    (script/internal/alliance/segvigen_256_release.sh unpacks the tars into $SLURM_TMPDIR)" → "a placeholder that
+    script/lightgenbench/run_chain.sh train overrides" (it sets every data location, `run_chain.sh:156-164`).
+  - `data_toolkit/predict_emission.py:9-10`: "what `scripts_segvigen/unrekey_for_eval.py` writes" → "the layout
+    of our evaluation snapshots"; `:25`: drop "(`script/internal/gate/`)".
+- [ ] This plan: 19a's Result, in the same commit.
+
+19b, the docs:
+
+- [ ] `git rm CLAUDE.md REFACTOR_TODO.md` (D23). The plan with every Result through 19a stays readable as
+  `git show <19b>^:REFACTOR_TODO.md`; the parent's `docs/status/refactor.md` names that commit (step 21).
+
+Checks, on the result of 19b:
+
+- [ ] `git grep -n -E 'script/internal|scripts_segvigen|CLAUDE\.md|REFACTOR_TODO|test_checkpoint_cadence|unrekey_for_eval|ckpt_step|live_eval'`
+  finds nothing.
+- [ ] `git diff --stat checks-tooling` lists the 42 deletions and the three edited files, nothing else.
+- [ ] `predict_emission.py` has the same AST before and after except its docstring; the release config parses
+  (OmegaConf) to the same values before and after.
+- [ ] `bash -n script/lightgenbench/*.sh`. In the workstation's `trellis2` env: `python train.py --help` (it
+  imports every registry and trainer), `--help` on `predict_emission.py` and on each kept `data_toolkit/` script
+  of ours, except `init_segvigen_from_full_seg.py`, which takes no options and downloads `full_seg`
+  (`python -m py_compile` instead).
+
+**Instructions:**
+
+**Result:**
+
+### 20. Push `release` and the tags (needs Dongchen's go)
+
+- [ ] `git push origin release`: a fast-forward from `9edb42a`, no force.
+- [ ] `git push origin checks-tooling pre-refactor` (D22; both tags exist only in this clone today).
+
+**Instructions:**
+
+**Result:**
+
+### 21. Parent: what `CLAUDE.md` held, the references, the pointer (push needs Dongchen's go)
+
+One parent commit, from a temporary worktree of `origin/main`:
+
+- [ ] `docs/baselines/segvigen-live-training.md`: a new section with `CLAUDE.md`'s § Environments, § Runs of
+  record, § The published predictions and § Traps (D23), paths rewritten relative to the parent. `:116` names
+  `SegviGen-Emission/REFACTOR_TODO.md` → the plan at tag `checks-tooling`.
+- [ ] `.claude/rules/segvigen.md`: `:15` (the `CLAUDE.md` bullet) → that section; `:23-25` (`scripts_segvigen/`
+  stays "until the cut-over") → step 17 closed without a move, and the submodule no longer carries
+  `scripts_segvigen/` (tag `checks-tooling`).
+- [ ] `AGENTS.md:231` (§ Documentation index, line number at `origin/main`): `SegviGen-Emission/CLAUDE.md` → `SegviGen-Emission/README.md`.
+- [ ] `docs/status/refactor.md:51-62` (the SegviGen-Emission bullet): the cleanup, the tag, where the plan's record
+  is (`<19b>^:REFACTOR_TODO.md`) and the gate's README (`checks-tooling:script/internal/gate/README.md`).
+- [ ] The gitlink to 19b.
+- [ ] Check: `git grep -n -E 'SegviGen-Emission/(CLAUDE|REFACTOR_TODO|script/internal|scripts_segvigen)'` in the
+  parent finds nothing outside `docs/superpowers/` (dated, append-only).
+- [ ] Push with Dongchen's go. The main checkout's `main` waits to fast-forward until the other session's
+  `AGENTS.md` edit is committed: a fast-forward would touch that file.
+
+**Instructions:**
+
+**Result:**
+
+### 22. Leftovers outside git (deletions need Dongchen's go, D24)
+
+- [ ] `git worktree remove .claude/worktrees/segvigen-emission-refactor` (at `9edb42a`; nothing untracked but
+  `.pytest_cache/`), then `git branch -d segvigen-emission-refactor` (local only, merged into `release`, its
+  commits kept by the tags). D16's branches stay.
+- [ ] The check data (D24): delete the three folders, or tar them to jupiter first.
+
+**Instructions:**
+
+**Result:**
+
 ## Later, only if wanted (behavior changes, one step each)
+
+- [ ] **Lab-internal wording in kept comments** (comments only, no behavior change; outside the cleanup as Dongchen
+  set it): `data_toolkit/build_lightgenbench_index.py:21-23` (the usage example's jupiter paths),
+  `configs/gen/segvigen_emissive_256_release.yaml:1-5,45` (jupiter, the paper run's config path, tag
+  `pre-refactor`), `trellis2/datasets/segvigen_256.py:5,8,26,35` ("Dongchen's latents_v2 tree", tag
+  `pre-refactor`, a script removed in step 2), `data_toolkit/{build_cond_tree,encode_emission_mask_latents}.py:3`
+  (tag `pre-refactor`).
 
 - [ ] **Checkpoint labels.** A `step<N>-<valloss>.ckpt` file pairs step N's weights with the previous
   validation's loss (top-k fires on the step trigger with the last logged metric):
@@ -784,5 +948,6 @@ both checkpoints of record are on jupiter.
 - Re-scoring any published number, beyond the rescore D18 needs (its own go).
 - Kevin's `main` and his remote; a message to Kevin (Dongchen 2026-09-16), unless D4 needs one.
 - `lightgen` commits after `202bfb0`.
+- A history rewrite: the cleanup removes files from `release`'s tree, and its history keeps them.
 - The position frame (voxels in [−0.5, 0.5], atlas in [−1, 1]): tracked in `../docs/status/refactor.md`.
 - The paper text.
