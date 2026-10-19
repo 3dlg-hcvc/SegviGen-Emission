@@ -44,7 +44,7 @@ Order: 1, 7, then 2–6 and 8–17 (the deletions in 2–6 need step 7's gates a
 
 Cleanup (Dongchen, 2026-10-18; § Cleanup below). Order: 18, 19, 20, 21, 22.
 
-- [ ] 18. This plan committed; tag `checks-tooling` on it (D22)
+- [x] 18. This plan committed; tag `checks-tooling` on it (D22)
 - [ ] 19. The cut: the check tooling, the test, our cluster launchers, `scripts_segvigen/`, `CLAUDE.md` and this
   plan leave `release`
 - [ ] 20. Push `release` and the tags (needs Dongchen's go)
@@ -817,18 +817,18 @@ wait for Dongchen's go. Parent commits are made from a temporary worktree of the
 ### 18. This plan committed; tag `checks-tooling` (D22)
 
 - [x] After Dongchen has read this section and answered D22–D24: commit `REFACTOR_TODO.md` on `release`.
-- [ ] `git tag -a checks-tooling -m "Last commit with the refactor's checks, cluster launchers and plan"` on that
+- [x] `git tag -a checks-tooling -m "Last commit with the refactor's checks, cluster launchers and plan"` on that
   commit. Local until step 20.
 
 **Instructions:**
 
-**Result:**
+**Result:** Plan `71dbec6`; annotated tag `checks-tooling` on it.
 
 ### 19. The cut (two commits)
 
 19a, the code side:
 
-- [ ] `git rm -r script/internal scripts_segvigen data_toolkit/test_checkpoint_cadence.py` (40 files):
+- [x] `git rm -r script/internal scripts_segvigen data_toolkit/test_checkpoint_cadence.py` (40 files):
   - `script/internal/gate/` (29): the refactor's checks, their shape lists, their two `sitecustomize.py`.
   - `data_toolkit/test_checkpoint_cadence.py`: the one test (5 cases on `build_checkpoint_callback`).
   - `script/internal/alliance/{segvigen_256_release.sh,snapshot_sidecar.sh}`: the release run's Alliance
@@ -844,14 +844,14 @@ wait for Dongchen's go. Parent commits are made from a temporary worktree of the
     `scripts_segvigen/`.
   - Then `rm -rf scripts_segvigen`: the ignored `scripts_segvigen/newdata/__pycache__/` (left by step 15d) stays
     on disk after `git rm`.
-- [ ] References in kept files, same commit:
+- [x] References in kept files, same commit:
   - `README.md:152,154`: the `scripts_segvigen/` and `script/internal/` rows of § Repository go.
   - `configs/gen/segvigen_emissive_256_release.yaml:7-8`: "a placeholder the launcher overrides
     (script/internal/alliance/segvigen_256_release.sh unpacks the tars into $SLURM_TMPDIR)" → "a placeholder that
     script/lightgenbench/run_chain.sh train overrides" (it sets every data location, `run_chain.sh:156-164`).
   - `data_toolkit/predict_emission.py:9-10`: "what `scripts_segvigen/unrekey_for_eval.py` writes" → "the layout
     of our evaluation snapshots"; `:25`: drop "(`script/internal/gate/`)".
-- [ ] This plan: 19a's Result, in the same commit.
+- [x] This plan: 19a's Result, in the same commit.
 
 19b, the docs:
 
@@ -872,7 +872,10 @@ Checks, on the result of 19b:
 
 **Instructions:**
 
-**Result:**
+**Result:** 19a (this commit): 40 files removed, the four references fixed. Checks on 19a, CLAUDE.md and this plan
+aside: one grep hit, `trellis2/datasets/segvigen_256.py:35`, which names a file removed in step 2 at tag `pre-refactor`
+(pushed in step 20; the comment is on § Later's list); the predictor's AST equal but the docstring; the config parses
+equal; `bash -n` passes; `--help` exits 0 for `train.py` and the nine scripts with options, the init compiles.
 
 ### 20. Push `release` and the tags (needs Dongchen's go)
 

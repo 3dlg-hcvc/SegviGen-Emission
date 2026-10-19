@@ -149,9 +149,7 @@ the masks, MAE and PSNR from mask × albedo. Our release run: test IoU 0.1468 ±
 | `train.py` | training entry point (`--config`, `--output_dir`, `--override key=value`) |
 | `script/lightgenbench/` | `prepare_lightgenbench.sh`, `run_chain.sh`: everything above |
 | `data_toolkit/` | TRELLIS.2's data scripts, and ours: the dual grid, the encoders, the mask latents, the conditioning, the check, the init, the index, the predictor |
-| `scripts_segvigen/` | the checkpoint bridge to SegviGen's own code and the scripts our published predictions ran through |
 | `o-voxel/` | TRELLIS.2's voxel library (with emission) |
-| `script/internal/` | our cluster launchers and regression checks; not needed to use the code |
 | `example.py`, `example_texturing.py`, `app.py`, `app_texturing.py` | TRELLIS.2's image-to-3D and texturing demos, unchanged ([their usage](https://github.com/microsoft/TRELLIS.2#-usage)) |
 
 ## License

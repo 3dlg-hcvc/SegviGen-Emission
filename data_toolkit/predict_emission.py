@@ -6,8 +6,8 @@
         [--ma_out_dir <dir>]
 
 The denoiser comes from the run's `config.yaml` through this repo's registries (`SegviGenSLatFlowModel`)
-and loads a Lightning checkpoint (`models.denoiser.*`) or a bridged file (`gen3dseg.flow_model.*`, what
-`scripts_segvigen/unrekey_for_eval.py` writes) strictly. Per shape: the shape and PBR latents of the
+and loads a Lightning checkpoint (`models.denoiser.*`) or a bridged file (`gen3dseg.flow_model.*`, the
+layout of our evaluation snapshots) strictly. Per shape: the shape and PBR latents of the
 256 grid (`<dir>/<sid>.npz`, normalized with the stats of TRELLIS.2-4B's `pipeline.json`), the DINOv3
 tokens of the first `--cond_dirs` entry holding `<sid>/cond_pos.pth` (or `cond.pth`), noise from
 `torch.manual_seed(seed * 1000003 + int(sid[:8], 16) % 100000 + k)`, `--steps` Euler steps with the
@@ -22,7 +22,7 @@ and subdivisions, clamped to [0, 1]), for MAE and PSNR.
 This is the published chain (the parent's `dump_segvigen256_voxels.py` with the original SegviGen
 repo's `Gen3DSeg`, `Sampler`, `load_eval_models`) on this repo's classes. The decoders run as that
 repo's vendored copy ran them (`decode_as_published`); on an A40 in the env of the published dumps, this
-script reproduces them byte for byte (`script/internal/gate/`).
+script reproduces them byte for byte.
 """
 import argparse
 import json
