@@ -22,7 +22,8 @@ and subdivisions, clamped to [0, 1]), for MAE and PSNR.
 This is the published chain (the parent's `dump_segvigen256_voxels.py` with the original SegviGen
 repo's `Gen3DSeg`, `Sampler`, `load_eval_models`) on this repo's classes. The decoders run as that
 repo's vendored copy ran them (`decode_as_published`); on an A40 in the env of the published dumps, this
-script reproduces them byte for byte.
+script reproduces them byte for byte, except on the three smallest shapes of each test set, where the
+published chain does not repeat itself either (paper seed 4, made on an RTX 6000 Ada, was not checked).
 """
 import argparse
 import json
