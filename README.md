@@ -137,8 +137,9 @@ Nothing picks a checkpoint for you: we report step 44,722, picked on the validat
 (the voxels, at 256³) and `pred` (the mask, three equal channels, nominally in [0, 1]), and `.../ma/draw0/` (mask × the asset's
 albedo), using 12 sampling steps and TRELLIS.2's texture sampler settings. Each shape's noise comes from its uuid and
 the seed, not from its place in the list. The LightGen repository's point-sampled evaluator scores them
-(`evaluation/pointsampled/pipeline.py --mode eval --gt_emission texture_only --voxel_pred_root <dir>`): voxel IoU from
-the masks, MAE and PSNR from mask × albedo. Our release run: test IoU 0.1468 ± 0.0083 over the five seeds.
+(`python -m evaluation.pointsampled.pipeline --pred_root <dir> --pred_format voxels --dataset_root <released dataset> …`,
+the full command in its `evaluation/README.md`), once on `mask/draw0/` and once on `ma/draw0/`: voxel IoU from the
+masks, MAE and PSNR from mask × albedo. Our release run: test IoU 0.1468 ± 0.0083 over the five seeds.
 
 ## Repository
 
