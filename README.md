@@ -13,6 +13,10 @@ TRELLIS.2's setup script needs Linux and the CUDA Toolkit 12.4.
 
 # Packages for training and the data scripts
 pip install lightning==2.6.1 pyarrow wandb
+
+# The cond stage uses two gated Hugging Face models: request access to facebook/dinov3-vitl16-pretrain-lvd1689m
+# and briaai/RMBG-2.0, then log in to Hugging Face with that account
+hf auth login
 ```
 
 The `cond` stage below needs a transformers that loads BiRefNet (4.57.6 does, 5.1 does not).
@@ -40,10 +44,28 @@ bash script/lightgenbench/run_chain.sh cond <data_root>
 A shape without a dual grid in `<data_root>/dual_grid_256/` is built from its [TexVerse-1K](https://huggingface.co/datasets/YiboZhang2001/TexVerse-1K) GLB when `TEXVERSE_1K=<dir>` is set.
 Each stage runs on `NUM_GPUS` GPUs (default 4).
 
-## Training
+## Prediction with Our Checkpoint
+
+This needs the Environment Setup and Data Setup above; our checkpoint is coming soon in the Hugging Face repo `3dlg-hcvc/LightgenBench-baselines`.
+Predict the emission of the test split with it.
 
 ```bash
-# Train from SegviGen's full_seg checkpoint; checkpoints go to outputs/segvigen_emissive_256_release/ckpts/
+# Download our checkpoint and its config into checkpoints/SegviGen-Emission/
+hf download 3dlg-hcvc/LightgenBench-baselines --include "SegviGen-Emission/*" --local-dir checkpoints
+
+# Predict the test split with seeds 0-4 into outputs/predict_test/seed<N>/
+# (mask/draw0/: the emission mask; ma/draw0/: the mask times the albedo)
+CKPT=checkpoints/SegviGen-Emission/ckpts/segvigen-emission.ckpt bash script/lightgenbench/run_chain.sh predict <data_root>
+```
+
+Score the predictions with the LightGenBench evaluation: https://github.com/3dlg-hcvc/lightgenbench
+
+## Training
+
+Training finetunes SegviGen's full_seg model (`full_seg.ckpt` in the Hugging Face repo `fenghora/SegviGen`, downloaded on first use).
+
+```bash
+# Train; checkpoints go to outputs/segvigen_emissive_256_release/ckpts/
 bash script/lightgenbench/run_chain.sh train <data_root>
 
 # Continue an interrupted run
@@ -52,27 +74,13 @@ RESUME=1 bash script/lightgenbench/run_chain.sh train <data_root>
 
 The global batch `NUM_GPUS` × `BS` (default 4 × 12) must be 48; `ANY_BATCH=1` allows another.
 
-## Prediction
+## Prediction with Your Checkpoint
+
+The same as Prediction with Our Checkpoint, with a checkpoint from Training.
 
 ```bash
-# Choose the checkpoint on the validation split (SPLIT=val), then predict the test split with seeds 0-4;
-# writes predictions to outputs/predict_test/seed<N>/
-# (mask/draw0/: the emission mask; ma/draw0/: the mask times the albedo)
+# Choose the checkpoint on the validation split (SPLIT=val), then predict the test split with seeds 0-4
 CKPT=outputs/segvigen_emissive_256_release/ckpts/<checkpoint>.ckpt bash script/lightgenbench/run_chain.sh predict <data_root>
-```
-
-Score the predictions with the LightGenBench evaluation: https://github.com/3dlg-hcvc/lightgenbench
-
-### With our checkpoint
-
-Our trained checkpoint replaces the Training section; it is coming soon in the Hugging Face repo `3dlg-hcvc/LightgenBench-baselines`.
-
-```bash
-# Download our checkpoint and its config.yaml into checkpoints/SegviGen-Emission/
-hf download 3dlg-hcvc/LightgenBench-baselines --include "SegviGen-Emission/*" --local-dir checkpoints
-
-# Predict the test split with seeds 0-4 into outputs/predict_test/seed<N>/
-CKPT=checkpoints/SegviGen-Emission/ckpts/segvigen-emission.ckpt bash script/lightgenbench/run_chain.sh predict <data_root>
 ```
 
 ## License
