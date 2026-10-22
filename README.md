@@ -65,7 +65,7 @@ Score the predictions with the LightGenBench evaluation: https://github.com/3dlg
 
 ### With our checkpoint
 
-Our trained checkpoint replaces the Training section; it is coming soon in the Hugging Face repo [3dlg-hcvc/LightgenBench-baselines](https://huggingface.co/3dlg-hcvc/LightgenBench-baselines).
+Our trained checkpoint replaces the Training section; it is coming soon in the Hugging Face repo `3dlg-hcvc/LightgenBench-baselines`.
 
 ```bash
 # Download our checkpoint and its config.yaml into checkpoints/SegviGen-Emission/

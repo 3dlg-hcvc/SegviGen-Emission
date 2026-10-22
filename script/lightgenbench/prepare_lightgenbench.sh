@@ -6,7 +6,7 @@
 #
 # <download_dir>  the Hugging Face files SegviGen-Emission uses: splits.json, checksums.sha256 and
 #                 data/{train,val,test}/{voxels,dual_grid,thumbnail}/*.tar (about 30 GB). The dataset is gated: accept
-#                 its terms on the Hugging Face page and run `huggingface-cli login` first. Files already there are
+#                 its terms on the Hugging Face page and run `hf auth login` first. Files already there are
 #                 kept; SKIP_DOWNLOAD=1 uses <download_dir> as it is.
 # <data_root>     written: release/<uuid>/{pbr_voxels,emission_voxels,dual_grid}.vxz and thumbnail.png with
 #                 release/splits.json (the release's own layout), the index in meta/ and the links pbr_voxels_256/,
