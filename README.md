@@ -43,7 +43,7 @@ Each stage runs on `NUM_GPUS` GPUs (default 4).
 
 ## Prediction with Our Checkpoint
 
-This needs the Environment Setup and Data Setup above; our checkpoint is coming soon in the Hugging Face repo `3dlg-hcvc/LightgenBench-baselines`.
+This needs the Environment Setup and Data Setup above; our checkpoint is in the Hugging Face repo [`3dlg-hcvc/LightgenBench-baselines`](https://huggingface.co/3dlg-hcvc/LightgenBench-baselines/tree/main/SegviGen-Emission).
 Predict the emission of the test split with it.
 
 ```bash
