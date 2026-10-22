@@ -65,17 +65,14 @@ Score the predictions with the LightGenBench evaluation: https://github.com/3dlg
 
 ### With our checkpoint
 
-Our trained checkpoint is coming soon in the Checkpoint column of https://github.com/3dlg-hcvc/lightgenbench#baselines.
-After Data Setup (no training), put it where training writes checkpoints; prediction also reads `config.yaml` one level above `ckpts/` (only its `models.denoiser` block, which the release config holds unchanged).
+Our trained checkpoint replaces the Training section; it is coming soon in the Hugging Face repo [3dlg-hcvc/LightgenBench-baselines](https://huggingface.co/3dlg-hcvc/LightgenBench-baselines).
 
 ```bash
-# Our checkpoint into the training run's folder, the release config as the run's config.yaml
-mkdir -p outputs/segvigen_emissive_256_release/ckpts
-wget -O outputs/segvigen_emissive_256_release/ckpts/<our checkpoint>.ckpt <checkpoint link>
-cp configs/gen/segvigen_emissive_256_release.yaml outputs/segvigen_emissive_256_release/config.yaml
+# Download our checkpoint and its config.yaml into checkpoints/SegviGen-Emission/
+hf download 3dlg-hcvc/LightgenBench-baselines --include "SegviGen-Emission/*" --local-dir checkpoints
 
 # Predict the test split with seeds 0-4 into outputs/predict_test/seed<N>/
-CKPT=outputs/segvigen_emissive_256_release/ckpts/<our checkpoint>.ckpt bash script/lightgenbench/run_chain.sh predict <data_root>
+CKPT=checkpoints/SegviGen-Emission/ckpts/segvigen-emission.ckpt bash script/lightgenbench/run_chain.sh predict <data_root>
 ```
 
 ## License
