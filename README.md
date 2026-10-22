@@ -63,6 +63,21 @@ CKPT=outputs/segvigen_emissive_256_release/ckpts/<checkpoint>.ckpt bash script/l
 
 Score the predictions with the LightGenBench evaluation: https://github.com/3dlg-hcvc/lightgenbench
 
+### With our checkpoint
+
+Our trained checkpoint is coming soon in the Checkpoint column of https://github.com/3dlg-hcvc/lightgenbench#baselines.
+After Data Setup (no training), put it where training writes checkpoints; prediction also reads `config.yaml` one level above `ckpts/` (only its `models.denoiser` block, which the release config holds unchanged).
+
+```bash
+# Our checkpoint into the training run's folder, the release config as the run's config.yaml
+mkdir -p outputs/segvigen_emissive_256_release/ckpts
+wget -O outputs/segvigen_emissive_256_release/ckpts/<our checkpoint>.ckpt <checkpoint link>
+cp configs/gen/segvigen_emissive_256_release.yaml outputs/segvigen_emissive_256_release/config.yaml
+
+# Predict the test split with seeds 0-4 into outputs/predict_test/seed<N>/
+CKPT=outputs/segvigen_emissive_256_release/ckpts/<our checkpoint>.ckpt bash script/lightgenbench/run_chain.sh predict <data_root>
+```
+
 ## License
 
 SegviGen is released under the MIT License (Copyright (c) 2026 Lin Li); TRELLIS.2 under the [MIT License](LICENSE).
