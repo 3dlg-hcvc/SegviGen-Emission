@@ -2,11 +2,12 @@
 # SegviGen-Emission on LightgenBench, one stage per call, in the order below:
 #
 #   bash script/lightgenbench/run_chain.sh latents <data_root>                     # shape + PBR latents
-#   bash script/lightgenbench/run_chain.sh masks <data_root>                        # emission-mask latents
+#   bash script/lightgenbench/run_chain.sh masks <data_root>                        # emission-mask latents (training only)
 #   bash script/lightgenbench/run_chain.sh cond <data_root>                         # DINOv3 conditioning, then the check
 #   bash script/lightgenbench/run_chain.sh train <data_root>                        # the init, then training
 #   CKPT=<ckpt> bash script/lightgenbench/run_chain.sh predict <data_root>          # the test split, seeds 0-4
 #
+# Prediction skips masks; train needs a cond stage run after masks (its check then covers them).
 # <data_root> is prepare_lightgenbench.sh's output; arguments after it go to train.py (train), such as
 # --override trainer.args.dataloader_num_workers=4. The recipe is configs/gen/segvigen_emissive_256_release.yaml
 # (50,000 steps, AdamW lr 1e-5, init from SegviGen's full_seg) on 4 GPUs with 12 shapes per GPU (global 48).
@@ -136,11 +137,14 @@ case "$STAGE" in
     per_gpu $PY -u data_toolkit/build_cond_tree.py --sid_list "$ALL" --release "$ROOT/release" --out "$COND_DIR" --routes build
     need "$COND_DIR" "{u}/cond_pos.pth"
     # The check every training input passes; writes meta/release_splits_usable.json and the sampler's token counts.
-    need "$SHAPE_DIR" "{u}.npz"; need "$PBR_DIR" "{u}.npz"; need "$MASK_DIR" "{u}.npz"
-    $PY -u data_toolkit/verify_and_pack.py verify --root "$ROOT" --workers "$W"
+    # Before the masks stage (prediction only) it checks the other inputs and writes no token counts, so train refuses.
+    need "$SHAPE_DIR" "{u}.npz"; need "$PBR_DIR" "{u}.npz"
+    if [ -d "$MASK_DIR" ]; then need "$MASK_DIR" "{u}.npz"; NO_MASKS=; else NO_MASKS=--no_masks; fi
+    $PY -u data_toolkit/verify_and_pack.py verify --root "$ROOT" --workers "$W" $NO_MASKS
     ;;
   train)
     [ -f "$USABLE" ] || fail "no $USABLE: run the cond stage first (its check writes it)"
+    [ -f "$MASK_DIR/token_counts.json" ] || fail "no $MASK_DIR/token_counts.json: run the masks stage, then the cond stage (its check writes it)"
     for a in ${EXTRA[@]+"${EXTRA[@]}"}; do
       case "$a" in *batch_size_per_gpu*) fail "set the batch with BS=, not $a (the batch check and the epoch length read BS)" ;; esac
     done

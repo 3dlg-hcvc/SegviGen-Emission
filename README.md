@@ -34,10 +34,7 @@ bash script/lightgenbench/prepare_lightgenbench.sh <download_dir> <data_root>
 # Shape and PBR latents, from the dual grids and the voxels
 bash script/lightgenbench/run_chain.sh latents <data_root>
 
-# Emission-mask latents (the training target)
-bash script/lightgenbench/run_chain.sh masks <data_root>
-
-# Image conditioning from the thumbnails, then a check of every training input
+# Image conditioning from the thumbnails, then a check of every input
 bash script/lightgenbench/run_chain.sh cond <data_root>
 ```
 
@@ -65,6 +62,12 @@ Score the predictions with the LightGenBench evaluation: https://github.com/3dlg
 Training finetunes SegviGen's full_seg model (`full_seg.ckpt` in the Hugging Face repo `fenghora/SegviGen`, downloaded on first use).
 
 ```bash
+# Emission-mask latents (the training target)
+bash script/lightgenbench/run_chain.sh masks <data_root>
+
+# The cond stage again, so its check covers the masks
+bash script/lightgenbench/run_chain.sh cond <data_root>
+
 # Train; checkpoints go to outputs/segvigen_emissive_256_release/ckpts/
 bash script/lightgenbench/run_chain.sh train <data_root>
 

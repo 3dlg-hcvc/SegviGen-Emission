@@ -8,6 +8,8 @@ verify   For every shape id: the shape, pbr and emission-mask latents exist, hol
              <root>/segvigen_emission_mask_npz/token_counts.json   (tokens per usable shape, the
                                                   BalancedResumableSampler's load; dataset reads it)
              <root>/meta/release_splits_usable.json   the split rows, unusable shapes removed
+         With --no_masks (for prediction, which reads no emission-mask latents) it leaves those latents
+         out and writes no token_counts.json (removing an older one).
 pack     Tars of the usable shapes under <root>/tars/ (few large files, for file systems that cap inodes),
          member paths as the training job unpacks them:
              latents.tar            meta/ + shape_latents/ + pbr_latents/ + emission_npz/
@@ -15,7 +17,7 @@ pack     Tars of the usable shapes under <root>/tars/ (few large files, for file
          and SHA256SUMS over them.
 
 Usage:
-    python data_toolkit/verify_and_pack.py verify --root <latents root> --workers 16
+    python data_toolkit/verify_and_pack.py verify --root <latents root> --workers 16 [--no_masks]
     python data_toolkit/verify_and_pack.py pack   --root <latents root> --cond_shards 8
 """
 import argparse
@@ -44,15 +46,17 @@ def _paths(root, sid):
 
 
 def _check(job):
-    root, sid = job
+    root, sid, masks = job
     import torch
     p = _paths(root, sid)
+    if not masks:
+        del p["emit"]
     for k, q in p.items():
         if not os.path.exists(q):
             return sid, f"missing_{k}", 0
     try:
         ref = None
-        for k in ("shape", "pbr", "emit"):
+        for k in ("shape", "pbr", "emit") if masks else ("shape", "pbr"):
             with np.load(p[k]) as d:
                 feats, coords = d["feats"], d["coords"]
             if (feats.ndim != 2 or coords.ndim != 2 or feats.shape[1] != 32 or coords.shape[1] != 3
@@ -77,14 +81,18 @@ def verify(args):
     meta = os.path.join(args.root, "meta")
     sids = [l.strip() for l in open(os.path.join(meta, "release_all.txt")) if l.strip()]
     with ProcessPoolExecutor(args.workers) as ex:
-        res = list(ex.map(_check, [(args.root, s) for s in sids], chunksize=64))
+        res = list(ex.map(_check, [(args.root, s, not args.no_masks) for s in sids], chunksize=64))
     ok = {s: n for s, st, n in res if st == "ok"}
     with open(os.path.join(meta, "usable.txt"), "w") as f:
         f.write("\n".join(s for s in sids if s in ok) + "\n")
     with open(os.path.join(meta, "dropped.tsv"), "w") as f:
         f.writelines(f"{s}\t{st}\n" for s, st, _ in res if st != "ok")
-    with open(os.path.join(args.root, EMIT_DIR, "token_counts.json"), "w") as f:
-        json.dump(ok, f)
+    counts = os.path.join(args.root, EMIT_DIR, "token_counts.json")
+    if not args.no_masks:
+        with open(counts, "w") as f:
+            json.dump(ok, f)
+    elif os.path.exists(counts):
+        os.remove(counts)   # an older check's: run_chain.sh train takes it to mean the masks were checked
     rows = json.load(open(os.path.join(meta, "release_splits.json")))
     usable_rows = {k: [i for i in v if sids[i] in ok] for k, v in rows.items()}
     with open(os.path.join(meta, "release_splits_usable.json"), "w") as f:
@@ -197,6 +205,8 @@ def main():
     ap.add_argument("--root", required=True)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--cond_shards", type=int, default=8)
+    ap.add_argument("--no_masks", action="store_true",
+                    help="verify: leave the emission-mask latents out (prediction only); removes token_counts.json")
     ap.add_argument("--overwrite", action="store_true", help="pack: delete the tars already there first")
     ap.add_argument("--incremental_from", default=None,
                     help="pack: the usable.txt of the pack already in tars/; keeps its cond tars, see pack_incremental")
