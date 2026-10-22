@@ -1,9 +1,8 @@
 """DINOv3 thumbnail conditioning for the released dataset: <out>/<uuid>/cond_pos.pth.
 
-Same artifact as the paper run's cond_fp16 tree (its convert_cond_fp16.py, at tag pre-refactor): one bare
-float16 tensor (1, 1029, 1024) per shape, the DINOv3 ViT-L/16 tokens of the TexVerse thumbnail after
-SegviGen's own preprocessing. The conditioning depends on the thumbnail only, not on the bake, so a
-shape the old runs already embedded keeps its bytes. Per shape, first route that applies:
+One bare float16 tensor (1, 1029, 1024) per shape: the DINOv3 ViT-L/16 tokens of the TexVerse thumbnail
+after SegviGen's own preprocessing. The conditioning depends on the thumbnail only, not on the bake, so a
+conditioning tree built before can be reused. Per shape, first route that applies:
 
   1. reuse    <paper_fp16_root>/<uuid>/cond_pos.pth exists            -> byte copy
   2. convert  <dataset_direct>/<split>/<uuid>/{cond_pos,cond}.pth      -> the fp32 tensor cast to fp16
@@ -11,10 +10,10 @@ shape the old runs already embedded keeps its bytes. Per shape, first route that
               <release>/<uuid>/thumbnail.png (a byte copy of the TexVerse thumbnail); if SegviGen's
               preprocessing raises, its repair variant (img_to_cond_repair)
 
-Routes 1 and 2 need the paper run's trees (--paper_fp16_root, --dataset_direct); without them every shape
-takes route 3. Route 3 runs SegviGen's own preprocessing, copied verbatim into thumbnail_cond.py beside
-this file, on this repo's BiRefNet and DinoV3FeatureExtractor. Never writes zeros: a shape with no usable
-thumbnail is listed and left out.
+Routes 1 and 2 need existing conditioning trees (--paper_fp16_root in float16, --dataset_direct in
+float32); without them every shape takes route 3. Route 3 runs SegviGen's own preprocessing, copied
+verbatim into thumbnail_cond.py beside this file, on this repo's BiRefNet and DinoV3FeatureExtractor.
+Never writes zeros: a shape with no usable thumbnail is listed and left out.
 
 Resumable (an existing output is skipped), atomic writes, a JSON report per rank.
 

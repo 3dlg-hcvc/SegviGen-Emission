@@ -1,4 +1,4 @@
-"""Check the released dataset's SegviGen inputs shape by shape, then pack them for the clusters.
+"""Check the released dataset's SegviGen inputs shape by shape, then pack them for a training machine.
 
 verify   For every shape id: the shape, pbr and emission-mask latents exist, hold finite
          (N, 32) feats on IDENTICAL ordered coords (SegviGenEmissive256.get_instance asserts that
@@ -8,7 +8,7 @@ verify   For every shape id: the shape, pbr and emission-mask latents exist, hol
              <root>/segvigen_emission_mask_npz/token_counts.json   (tokens per usable shape, the
                                                   BalancedResumableSampler's load; dataset reads it)
              <root>/meta/release_splits_usable.json   the split rows, unusable shapes removed
-pack     Tars of the usable shapes under <root>/tars/ (few large files: the clusters cap inodes),
+pack     Tars of the usable shapes under <root>/tars/ (few large files, for file systems that cap inodes),
          member paths as the training job unpacks them:
              latents.tar            meta/ + shape_latents/ + pbr_latents/ + emission_npz/
              cond_<k>of<n>.tar      cond_fp16/<uuid>/cond_pos.pth
@@ -130,8 +130,9 @@ def _latents_tar(args, meta, sids, lat):
 
 
 def pack_incremental(args):
-    """After a repair: the cond tars of the previous pack stay (78 GB that may already be on a cluster), the
-    conditioning of shapes that became usable since goes into ONE extra tar, latents.tar is rebuilt whole."""
+    """After a repair: the cond tars of the previous pack stay (they may already be on the training
+    machine), the conditioning of shapes that became usable since goes into ONE extra tar, latents.tar is
+    rebuilt whole."""
     meta = os.path.join(args.root, "meta")
     tars = os.path.join(args.root, "tars")
     sids = [l.strip() for l in open(os.path.join(meta, "usable.txt")) if l.strip()]

@@ -8,10 +8,9 @@
 #   CKPT=<ckpt> bash script/lightgenbench/run_chain.sh predict <data_root>          # the test split, seeds 0-4
 #
 # <data_root> is prepare_lightgenbench.sh's output; arguments after it go to train.py (train), such as
-# --override trainer.args.dataloader_num_workers=4. The recipe is the release run's: configs/gen/segvigen_emissive_256_release.yaml
-# (50,000 steps, AdamW lr 1e-5, init from SegviGen's full_seg), trained on 4 H100 80 GB GPUs with 12 shapes per GPU
-# (global 48). The release scored step 44,722, picked on the validation split by IoU; a checkpoint is always named:
-# nothing here picks one.
+# --override trainer.args.dataloader_num_workers=4. The recipe is configs/gen/segvigen_emissive_256_release.yaml
+# (50,000 steps, AdamW lr 1e-5, init from SegviGen's full_seg) on 4 GPUs with 12 shapes per GPU (global 48).
+# Choose the checkpoint on the validation split (SPLIT=val); predict takes it from CKPT, nothing here picks one.
 #
 # env: NUM_GPUS (4); BS (12; another global batch than the release's 48 is refused unless ANY_BATCH=1); MAX_STEPS;
 #      OUTPUTS (outputs: the run lands in <OUTPUTS>/segvigen_emissive_256_release); RESUME=1 to continue a run directory
@@ -19,7 +18,7 @@
 #      dual-grid processes; cond: the check's processes; 8); LIGHTGEN_REPO (latents: the lightgen repo, default the
 #      directory holding this repo); SEEDS (predict, 0,1,2,3,4); SPLIT (predict, test); PRED_OUT (predict:
 #      <OUTPUTS>/predict_<split>); CHAIN_TMPDIR (below); PYTHON (the interpreter, default python: the cond stage needs
-#      a transformers that loads BiRefNet, train needs lightning 2.6; README.md, Setup). wandb runs offline unless
+#      a transformers that loads BiRefNet, train needs lightning 2.6; README.md, Environment Setup). wandb runs offline unless
 #      logged in.
 # Each call tees its output to log/<TS>-lightgenbench_<stage>.log. Run from anywhere; it works in the repo root.
 set -euo pipefail
@@ -70,7 +69,7 @@ if missing:
 if bad:
     msg += f"; {len(bad)} unreadable, delete them and rerun the stage: {' '.join(bad[:5])}"
 print(msg, flush=True)
-os._exit(1 if missing or bad else 0)   # not sys.exit: pyarrow's teardown aborted at exit once (2026-10-12)
+os._exit(1 if missing or bad else 0)   # not sys.exit: pyarrow's teardown can abort at exit
 PY
 }
 # GPUs: the caller's CUDA_VISIBLE_DEVICES (a scheduler's allocation), else 0..NUM_GPUS-1
@@ -150,7 +149,7 @@ print(hf_hub_download("fenghora/SegviGen", "full_seg.ckpt"), flush=True); os._ex
         mkdir -p "$(dirname "$INIT")"; $PY data_toolkit/init_segvigen_from_full_seg.py "$SRC" "$INIT.tmp" && mv "$INIT.tmp" "$INIT"
       fi
     fi
-    # one epoch in optimizer steps: last.ckpt is refreshed once per epoch, as in the release run
+    # one epoch in optimizer steps: last.ckpt is refreshed once per epoch
     EPOCH_STEPS=$(split_uuids train | grep -c . | awk -v g=$((NUM_GPUS * BS)) '{n = int($1 / g); print (n > 0 ? n : 1)}')
     $PY -u train.py --config configs/gen/segvigen_emissive_256_release.yaml --output_dir "$OUT" --ckpt "$ckpt" \
       --num_gpus "$NUM_GPUS" --override trainer.args.batch_size_per_gpu="$BS" --override trainer.args.batch_split=1 \
@@ -164,7 +163,7 @@ print(hf_hub_download("fenghora/SegviGen", "full_seg.ckpt"), flush=True); os._ex
       --override "dataset.args.cond_search_dirs=[\"$COND_DIR\"]" ${EXTRA[@]+"${EXTRA[@]}"}
     ;;
   predict)
-    [ -n "${CKPT:-}" ] || fail "set CKPT (the release: step 44,722, picked on the validation split)"
+    [ -n "${CKPT:-}" ] || fail "set CKPT (choose it on the validation split, SPLIT=val)"
     [ -f "$USABLE" ] || fail "no $USABLE: run the cond stage first (its check writes it)"
     SPLIT=${SPLIT:-test}; OUT=${PRED_OUT:-$OUTPUTS/predict_$SPLIT}; mkdir -p "$OUT"
     split_uuids "$SPLIT" > "$OUT/$SPLIT.txt"

@@ -237,10 +237,8 @@ class SnapshotCallback(pl.Callback):
 #     requeued job continues the same wandb run;
 #   * build_checkpoint_callback: top-k by val/loss plus last.ckpt every ckpt_last_every_n_steps, or
 #     upstream's step-interval mode;
-#   * CheckpointTimingCallback: the [ckpt-timing] lines; the snapshot watchers parse SAVE_START and
-#     RESUME_AFTER_SAVE;
-#   * TrainTraceCallback: the per-step [train] and per-validation [val] lines (formerly
-#     BasicTrainer.on_train_batch_end / on_validation_epoch_end). It is the last callback, as
+#   * CheckpointTimingCallback: the [ckpt-timing] lines (SAVE_START, RESUME_AFTER_SAVE, BATCH_TIME, ...);
+#   * TrainTraceCallback: the per-step [train] and per-validation [val] lines. It is the last callback, as
 #     Lightning calls the module's own hooks after every callback's;
 #   * OptionalFinalSnapshotCallback: upstream's SnapshotCallback with disable_final_snapshot, which
 #     skips only the snapshot at the end of training (SegviGenEmissive256 has no visualize_sample).
@@ -298,7 +296,7 @@ def build_checkpoint_callback(trainer_args: Dict[str, Any], ckpt_dir: str) -> Mo
         steps (default 200) so a hard crash loses at most that many steps; on a
         graceful (SIGTERM) requeue the trainer's signal handler still saves exact
         state. NOTE: never set this to 1 — rewriting the multi-GB checkpoint every
-        step blocks training on a Lustre write each step (~90% of wall-clock; see
+        step blocks training on a checkpoint write each step (see
         CheckpointTimingCallback). The top-k save itself is independent of this
         interval — it fires at validation-epoch end via the monitor metric.
       * Legacy step-interval mode (``i_save`` set, no ``save_top_k``): keep all
@@ -408,8 +406,8 @@ class CheckpointTimingCallback(pl.Callback):
             self._emit(f"[ckpt-timing] BATCH_TIME step={step} dt={dt:.2f}s")
 
     def on_train_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        # Peak VRAM for the whole run (throughput/VRAM probes read this line;
-        # torch.cuda.max_memory_allocated is a running high-water mark, so
+        # Peak VRAM for the whole run (torch.cuda.max_memory_allocated is a
+        # running high-water mark, so
         # this captures the worst step even if it wasn't the last one).
         if not bool(getattr(trainer, "is_global_zero", True)):
             return

@@ -1,7 +1,6 @@
 """SegviGen-Emission's target latents: the emission mask of each shape through the stock texture encoder.
 
-Same convention as the paper run's build (its 256 lane, at tag pre-refactor, and the 512 lane's
-build_dataset_direct.py before it): white = emissive / black = not in base_color, metallic 0,
+The mask is written as a PBR texture: white = emissive / black = not in base_color, metallic 0,
 roughness 255, alpha 255, emission binarized at > 1/255 (any nonzero channel).
 
 Per shape, from the released dataset's layout (3dlg-hcvc/LightgenBench):
@@ -43,7 +42,7 @@ from trellis2 import models  # noqa: E402
 
 TRELLIS = "microsoft/TRELLIS.2-4B/ckpts"
 
-# the constant channels of the convention above (the 512 lane's build_dataset_direct.py had the same)
+# the constant channels of the convention above
 OUT_METALLIC_U8 = 0
 OUT_ROUGHNESS_U8 = 255
 OUT_ALPHA_U8 = 255
@@ -92,7 +91,7 @@ def build_one(sid: str, tex_encoder, release_root: str, out_root: str) -> str:
     os.makedirs(out_root, exist_ok=True)
     tmp_path = out_path + f".tmp{os.getpid()}.npz"  # must end in .npz or np.savez appends it, breaking os.replace
     feats_np = tex_slat.feats.detach().cpu().numpy()
-    coords_np = tex_slat.coords[:, 1:].detach().cpu().numpy()  # drop batch column, match latents_v2 (N,3)
+    coords_np = tex_slat.coords[:, 1:].detach().cpu().numpy()  # drop batch column: (N, 3)
     import numpy as np
     np.savez(tmp_path, feats=feats_np.astype("float32"), coords=coords_np.astype("uint8"))
     os.replace(tmp_path, out_path)
@@ -117,7 +116,7 @@ def main():
     # .float() forces fp32 weights to match our fp32 input feats -- the
     # pretrained ckpt is fp16 per its name, and Triton's tl.dot in flex_gemm
     # asserts matching dtypes (same fix as encode_pbr_latent.py and
-    # encode_shape_from_dual_grid.py, commit d842eb6).
+    # encode_shape_from_dual_grid.py).
     tex_encoder = models.from_pretrained(f"{TRELLIS}/tex_enc_next_dc_f16c32_fp16").eval().float().cuda()
 
     n_built = n_cached = n_skipped = n_error = 0

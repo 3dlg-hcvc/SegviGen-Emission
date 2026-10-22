@@ -1,38 +1,23 @@
-"""SegviGen-emissive, 256-native lane.
+"""SegviGenEmissive256: SegviGen-Emission's training data on the 256 voxel grid.
 
-Owner correction (board lightning_port, 2026-08-26): the from-scratch
-fullseg finetune trains on the 256-native voxel grid directly, reusing the
-team's shared production shape+pbr latents (Dongchen's latents_v2 tree, the
-same ones the emission DiT baseline reads) plus OUR new emission-mask npz
-(data_toolkit/encode_emission_mask_latents.py, job 8) as the target.
-This REPLACES the 512 lane's SegviGenEmissiveDirect (tag pre-refactor) for the
-imminent launch -- do not confuse the two; dataset_direct's own
-output_tex_slat.pth is a different (512-resolution, upsampled) artifact.
+Per-shape sources (independent roots, joined by sha256):
+    shape latent (concat_cond)     <shape_latent_root>/shape_latents/<shape_latent_name>/<sid>.npz
+    pbr/input latent (appearance)  <pbr_latent_root>/pbr_latents/<pbr_latent_name>/<sid>.npz
+    emission latent (x_0, target)  <emission_latent_dir>/<sid>.npz
+                                    (data_toolkit/encode_emission_mask_latents.py)
+    DINOv3 cond                    <a cond_search_dirs entry>/<sid>/cond_pos.pth (or cond.pth),
+                                    the first entry that holds it (data_toolkit/build_cond_tree.py);
+                                    the split JSON, not these directories, defines split membership
 
-Per-shape sources (three independent roots, joined by sha256):
-    shape latent (concat_cond)     latents_v2/shape_latents/<shape_latent_name>/<sid>.npz
-    pbr/input latent (appearance)  latents_v2/pbr_latents/<pbr_latent_name>/<sid>.npz
-    emission latent (x_0, target)  OUR build output (emission_latent_dir)/<sid>.npz
-    DINOv3 cond                    dataset_direct/{train_72k_agentic,val_72k}/<sid>/cond_pos.pth
-                                    (reused verbatim: image conditioning is resolution-
-                                    independent, so the 512-lane's precomputed tokens
-                                    apply here unchanged -- searched across both split
-                                    dirs since this class's split membership is defined
-                                    by the _agentic split JSON, not those directory names)
-
-Normalization: shape_normalization / tex_normalization are the SAME shipped
-TRELLIS.2 pipeline.json stats the 512 lane's config used (NOT the
-DiT baseline's regenerated agentic-VAE emission stats) -- both our emission
-npz and Dongchen's pbr latent were encoded with the STOCK tex encoder, so
-they share the stock tex_normalization; the shape latent is the stock
-shape_normalization. Passing the DiT's own emission_normalization here
-would silently mis-scale the target: that block belongs to a different
-(agentic-VAE) latent space.
+Normalization: shape_normalization / tex_normalization are the stock
+TRELLIS.2 pipeline.json stats. The emission-mask latent and the PBR latent
+both come from the stock tex encoder, so both use tex_normalization; the
+shape latent uses shape_normalization. The stats of another latent space
+would silently mis-scale the target.
 
 Every npz's coords are expected on the SAME sparse grid (all three are
-downsampled from the same occupied 256^3 voxel set); asserted per-sample at
-load time, and pre-verified at build time for a coord-check sample (the one-off
-scripts_segvigen/check_256_coords_vs_shape.py, at tag pre-refactor: 13/13 match on val_72k).
+downsampled from the same occupied 256^3 voxel set); asserted per sample at
+load time, and checked for every shape by data_toolkit/verify_and_pack.py.
 """
 from __future__ import annotations
 
@@ -52,8 +37,7 @@ __all__ = ["SegviGenEmissive256"]
 
 
 # ---------------------------------------------------------------------------
-# Helpers, moved verbatim from the lightgen branch's trellis2/datasets/lightgen_slat.py
-# (refactor step 8b; that module's LightGen* datasets were used by neither run)
+# Helpers: latent loading, collation and the sample list from a parquet index
 # ---------------------------------------------------------------------------
 
 def _read_npz_as_sparse(path: str, normalization: Optional[Dict] = None) -> SparseTensor:
@@ -175,7 +159,7 @@ class SegviGenEmissive256(Dataset):
         data_root: str,
         parquet_file: str,
         split_json: str,
-        split: str,                       # "train" / "val" (split-JSON key, NOT a dataset_direct dirname)
+        split: str,                       # "train" / "val": a key of the split JSON
         shape_latent_root: str,
         shape_latent_name: str,
         pbr_latent_root: str,
@@ -199,9 +183,8 @@ class SegviGenEmissive256(Dataset):
 
         base = _build_parquet_samples(data_root, parquet_file, split, 0.0, None, split_json)
         # Admission by directory-listing set intersection: one listdir per root
-        # (4 listings total) instead of 4 NFS stats x 36k sids. The per-sid
-        # exists() version of this loop cost 30-60 min of dead GPU time at
-        # every dataset construction (found live on job 257886, 2026-08-26).
+        # (4 listings total) instead of 4 stats per sid, which is slow on a
+        # network file system.
         shape_set = {f[:-4] for f in os.listdir(self.shape_dir) if f.endswith(".npz")}
         pbr_set = {f[:-4] for f in os.listdir(self.pbr_dir) if f.endswith(".npz")}
         emit_set = {f[:-4] for f in os.listdir(self.emit_dir) if f.endswith(".npz")}
@@ -212,8 +195,8 @@ class SegviGenEmissive256(Dataset):
             except FileNotFoundError:
                 pass
         # cond membership = the sid dir exists under a cond root; cond_pos.pth
-        # presence inside it was verified corpus-wide 2026-08-26 (the sidecar
-        # fill), and _find_cond_dir still re-checks per sample at load time.
+        # inside it is checked by data_toolkit/verify_and_pack.py, and
+        # _find_cond_dir re-checks per sample at load time.
         self.sids: List[str] = []
         n_skip = {"shape": 0, "pbr": 0, "emit": 0, "cond": 0}
         for s in base:
@@ -238,8 +221,8 @@ class SegviGenEmissive256(Dataset):
 
         # Per-sample token count for BalancedResumableSampler. Prefer the
         # precomputed manifest (data_toolkit/verify_and_pack.py writes
-        # <emit_dir>/token_counts.json); opening 36k npz headers over NFS at
-        # every construction was the other half of the dead-GPU startup cost.
+        # <emit_dir>/token_counts.json); opening every npz header at each
+        # construction is slow on a network file system.
         manifest = {}
         mpath = os.path.join(self.emit_dir, "token_counts.json")
         if os.path.exists(mpath):

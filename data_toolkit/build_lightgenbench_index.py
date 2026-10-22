@@ -18,9 +18,7 @@ Row order is train, val, test, each in the order of splits.json (sorted there).
 
 Usage:
     python data_toolkit/build_lightgenbench_index.py \
-        --release /3dlg-jupiter-project/lightgen/datasets/dataset_release \
-        --out /3dlg-jupiter-project/lightgen/datasets/dataset_release_latents/meta \
-        --link_voxels /3dlg-jupiter-project/lightgen/datasets/dataset_release_latents
+        --release <data_root>/release --out <data_root>/meta --link_voxels <data_root>
 """
 import argparse
 import json
@@ -37,8 +35,8 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--link_voxels", default=None, help="work root that gets the two flat symlink trees")
     ap.add_argument("--link_release", default=None,
-                    help="release root as the links should spell it (default: --release). The workstation "
-                         "sees jupiter under /cs/..., Solar without the prefix; links made on one dangle on the other")
+                    help="release root as the links should spell it (default: --release), for a release mounted "
+                         "at different paths on different machines")
     args = ap.parse_args()
 
     with open(os.path.join(args.release, "splits.json")) as f:

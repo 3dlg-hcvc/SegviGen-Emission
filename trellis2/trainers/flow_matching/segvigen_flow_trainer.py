@@ -4,21 +4,18 @@ Differences from ImageConditionedSparseFlowMatchingCFGTrainer, each deliberate:
 
 1. PRECOMPUTED CONDITIONING. The dataset may hand `cond` as the DINOv3 token
    tensor itself (B, 1029, 1024) instead of an image. In that case the on-GPU
-   encoder never runs and neg_cond is zeros_like(cond), which is exactly what
-   the standalone lane precomputed (its cond.pth stores the same zero negative).
+   encoder never runs and neg_cond is zeros_like(cond), the same zero negative
+   the standalone SegviGen trainer stores in its cond.pth.
    Image input still works and takes the parent's encode path.
 2. PER-SHAPE MEAN LOSS REDUCTION (always on, independent of weighting).
    Each shape's token-mean is computed first, then averaged over shapes in
-   the batch. A token-count-weighted batch mean is NOT the same gradient;
-   the assessment page flags this as a decision, and the decision here is:
-   keep our lane's semantics so runs remain comparable to the standalone
-   arm. The standalone lane's --pos_weight / --balanced_pos_weight
-   per-voxel weighting is reproduced too, but DORMANT by default
-   (pos_weight 1.0, balanced_pos_weight 0.0 -- owner-set 2026-08-26: the
-   production recipe trains unweighted; the July w5 weighted experiments
-   lost). emis_mask is only required when a config turns weighting back
-   on (dataset's require_mask defaults to false accordingly).
-3. p_uncond defaults to 0.0: our lane never trained with CFG dropout.
+   the batch, as in the standalone SegviGen trainer. A token-count-weighted
+   batch mean is NOT the same gradient. The standalone trainer's
+   --pos_weight / --balanced_pos_weight per-voxel weighting is reproduced
+   too, but off by default (pos_weight 1.0, balanced_pos_weight 0.0: the
+   release config trains unweighted). emis_mask is only required when a
+   config turns weighting back on.
+3. p_uncond defaults to 0.0: no CFG dropout.
 
 Batch keys consumed here: x_0, cond, emis_mask (optional, weighting only),
 sha256; everything else (concat_cond, appearance_cond) passes through to

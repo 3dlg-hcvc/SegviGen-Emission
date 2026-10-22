@@ -2,11 +2,9 @@
 
 SegviGen conditions on appearance by adding the appearance latent as a SECOND
 set of tokens at the same voxel coordinates (sequence 2N), rather than as extra
-channels (the emission DiT's 64->96 route). That keeps in_channels at 64, so
-every pretrained tensor of slat_flow_imgshape2tex_dit_1_3B_512_bf16 is reused,
-input projection included. The trick lives entirely in this wrapper: the stock
-model underneath is untouched (the fork's copy of structured_latent_flow.py
-differs from this repository's by three comment lines).
+channels. That keeps in_channels at 64, so every pretrained tensor of
+slat_flow_imgshape2tex_dit_1_3B_512_bf16 is reused, input projection included.
+The trick lives entirely in this wrapper: the stock model underneath is untouched.
 
 forward() packs [noised target | appearance] per shape before the stock
 forward and keeps the first half of each shape's output after it. It calls
@@ -14,7 +12,7 @@ super().forward() so SparseTransformerElasticMixin sees the DOUBLED sequence,
 which is the sequence that actually costs memory.
 
 Port of inference_full.Gen3DSeg (the training/inference wrapper the standalone
-trainer uses); see the lightning_feasibility page for the full assessment.
+SegviGen trainer uses).
 """
 from typing import List, Optional, Union
 

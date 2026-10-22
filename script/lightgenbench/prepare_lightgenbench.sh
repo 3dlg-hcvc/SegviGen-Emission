@@ -11,13 +11,13 @@
 # <data_root>     written: release/<uuid>/{pbr_voxels,emission_voxels}.vxz and thumbnail.png with release/splits.json
 #                 (the release's own layout), the index in meta/ and the links pbr_voxels_256/, emission_voxels_256/
 #                 (data_toolkit/build_lightgenbench_index.py). run_chain.sh builds the rest there.
-# Run from anywhere, in the python env of this repo (README.md, Setup); PYTHON selects the interpreter.
+# Run from anywhere, in the python env of this repo (README.md, Environment Setup); PYTHON selects the interpreter.
 set -euo pipefail
 DL=$(realpath -m "${1:?download_dir}"); ROOT=$(realpath -m "${2:?data_root}")
 REPO=$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)
 PY=${PYTHON:-python}
 REPO_ID=${REPO_ID:-3dlg-hcvc/LightgenBench}
-# splits.json as released 2026-09-18: every published number uses this split.
+# the released splits.json: every published number uses this split.
 SPLITS_SHA256=${SPLITS_SHA256:-6ab3bae5453ba64a1c995a8c178c999cea6bb89f796918521752440b66dfe87e}
 WORKERS=${WORKERS:-8}
 mkdir -p "$DL" "$ROOT"

@@ -1,12 +1,11 @@
 """The thumbnail -> DINOv3 conditioning of SegviGen, for route 3 of build_cond_tree.py.
 
-Five functions copied verbatim from the original SegviGen tree (QhelDIV/SegviGen-emissive at a67a69c, the
-code that built every existing conditioning file): preprocess_image, get_cond and img_to_cond from
-data_toolkit/img_to_cond.py, preprocess_image_repair and img_to_cond_repair from
-emissive/data_prep/build_cond_thumbnail.py (one change: img_to_cond_repair takes get_cond from this module
-instead of importing img_to_cond). The caller passes this repo's BiRefNet (trellis2.pipelines.rembg) and
-DinoV3FeatureExtractor (trellis2.modules.image_feature_extractor): the extractor is byte-identical to that
-tree's, and BiRefNet differs only in how it loads.
+Five functions copied verbatim from the original SegviGen tree (QhelDIV/SegviGen-emissive at a67a69c):
+preprocess_image, get_cond and img_to_cond from data_toolkit/img_to_cond.py, preprocess_image_repair and
+img_to_cond_repair from emissive/data_prep/build_cond_thumbnail.py (one change: img_to_cond_repair takes
+get_cond from this module instead of importing img_to_cond). The caller passes this repo's BiRefNet
+(trellis2.pipelines.rembg) and DinoV3FeatureExtractor (trellis2.modules.image_feature_extractor): the
+extractor is byte-identical to that tree's, and BiRefNet differs only in how it loads.
 
 That code is under the MIT License:
 

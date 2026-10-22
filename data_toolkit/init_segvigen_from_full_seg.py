@@ -1,4 +1,4 @@
-"""Strip the standalone lane's key prefix off a SegviGen checkpoint so the
+"""Strip the key prefix off a standalone SegviGen checkpoint so the
 framework's finetune loader can match it.
 
 Standalone checkpoints prefix every key with gen3dseg.flow_model. (wrapper attr

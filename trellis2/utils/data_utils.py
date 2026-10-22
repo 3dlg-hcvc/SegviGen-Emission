@@ -145,8 +145,7 @@ class ResumableSampler(Sampler):
     def set_epoch(self, epoch: int) -> None:
         # Lightning's fit loop calls this on every train epoch (only when the
         # sampler exposes a callable `set_epoch`). Without it, ``self.epoch``
-        # stayed at 0 forever and every epoch re-shuffled with seed 0 — i.e.
-        # the same 64-of-120 subset got trained on every epoch.
+        # would stay at 0 and every epoch would shuffle in the same order.
         self.epoch = int(epoch)
         self.idx = 0
 

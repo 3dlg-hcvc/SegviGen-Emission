@@ -7,23 +7,20 @@
 
 The denoiser comes from the run's `config.yaml` through this repo's registries (`SegviGenSLatFlowModel`)
 and loads a Lightning checkpoint (`models.denoiser.*`) or a bridged file (`gen3dseg.flow_model.*`, the
-layout of our evaluation snapshots) strictly. Per shape: the shape and PBR latents of the
+standalone SegviGen layout) strictly. Per shape: the shape and PBR latents of the
 256 grid (`<dir>/<sid>.npz`, normalized with the stats of TRELLIS.2-4B's `pipeline.json`), the DINOv3
 tokens of the first `--cond_dirs` entry holding `<sid>/cond_pos.pth` (or `cond.pth`), noise from
 `torch.manual_seed(seed * 1000003 + int(sid[:8], 16) % 100000 + k)`, `--steps` Euler steps with the
 shipped texture sampler (`pipeline.json` `tex_slat_sampler`: guidance 1.0, interval [0.6, 0.9],
 rescale_t 3.0), and the stock TRELLIS.2-4B texture decoder guided by the shape decoder's subdivisions
 at resolution 256. Output `<out_dir>/draw<k>/<sid>.npz`: `coords` int16 [N, 3] (the 256 grid), `pred`
-float16 [N, 3], the predicted emission mask (three equal channels, nominal [0, 1]), scored by the
-parent repo's `evaluation/pointsampled/pipeline.py --pred_format voxels`. With `--ma_out_dir`, also
+float16 [N, 3], the predicted emission mask (three equal channels, nominal [0, 1]), scored by
+LightgenBench's `evaluation/pointsampled/pipeline.py --pred_format voxels`. With `--ma_out_dir`, also
 `<ma_out_dir>/draw<k>/<sid>.npz` = mask x the asset's albedo (the PBR latent through the same decoder
 and subdivisions, clamped to [0, 1]), for MAE and PSNR.
 
-This is the published chain (the parent's `dump_segvigen256_voxels.py` with the original SegviGen
-repo's `Gen3DSeg`, `Sampler`, `load_eval_models`) on this repo's classes. The decoders run as that
-repo's vendored copy ran them (`decode_as_published`); on an A40 in the env of the published dumps, this
-script reproduces them byte for byte, except on the three smallest shapes of each test set, where the
-published chain does not repeat itself either (paper seed 4, made on an RTX 6000 Ada, was not checked).
+This is the standalone SegviGen inference (its `Gen3DSeg`, `Sampler`, `load_eval_models`) on this repo's
+classes. The decoders run as that code's vendored copy runs them (`decode_as_published`).
 """
 import argparse
 import json
