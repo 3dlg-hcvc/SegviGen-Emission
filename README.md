@@ -24,11 +24,11 @@ The dataset download is described at https://github.com/3dlg-hcvc/lightgenbench.
 The commands below prepare it for this baseline, in order:
 
 ```bash
-# Download the voxel and thumbnail files into <download_dir> and unpack them into <data_root>
+# Download the voxel, dual-grid and thumbnail files into <download_dir> and unpack them into <data_root>
 bash script/lightgenbench/prepare_lightgenbench.sh <download_dir> <data_root>
 
-# Shape and PBR latents, from the TexVerse-1K GLBs
-TEXVERSE_1K=<texverse_1k_dir> bash script/lightgenbench/run_chain.sh latents <data_root>
+# Shape and PBR latents, from the dual grids and the voxels
+bash script/lightgenbench/run_chain.sh latents <data_root>
 
 # Emission-mask latents (the training target)
 bash script/lightgenbench/run_chain.sh masks <data_root>
@@ -37,8 +37,7 @@ bash script/lightgenbench/run_chain.sh masks <data_root>
 bash script/lightgenbench/run_chain.sh cond <data_root>
 ```
 
-`TEXVERSE_1K` is a download of [TexVerse-1K](https://huggingface.co/datasets/YiboZhang2001/TexVerse-1K) that holds `glbs/glbs_1k/<group>/<uuid>_1024.glb`.
-The `latents` stage imports LightGenBench's mesh loader from the folder that holds this repository; set `LIGHTGEN_REPO=<lightgenbench clone>` if this repository is not inside a LightGenBench clone.
+A shape without a dual grid in `<data_root>/dual_grid_256/` is built from its [TexVerse-1K](https://huggingface.co/datasets/YiboZhang2001/TexVerse-1K) GLB when `TEXVERSE_1K=<dir>` is set.
 Each stage runs on `NUM_GPUS` GPUs (default 4).
 
 ## Training

@@ -13,6 +13,10 @@ and, with --link_voxels, the flat symlink trees the paper's encoders read:
 
     <work>/pbr_voxels_256/<uuid>.vxz      -> <release>/<uuid>/pbr_voxels.vxz
     <work>/emission_voxels_256/<uuid>.vxz -> <release>/<uuid>/emission_voxels.vxz
+    <work>/dual_grid_256/<uuid>.vxz       -> <release>/<uuid>/dual_grid.vxz
+
+A shape whose release file is missing gets no link, and a file already in a tree (such as a dual grid built
+from a GLB by run_chain.sh latents) is kept as it is.
 
 Row order is train, val, test, each in the order of splits.json (sorted there).
 
@@ -33,7 +37,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--release", required=True, help="dataset_release root (holds splits.json and <uuid>/)")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--link_voxels", default=None, help="work root that gets the two flat symlink trees")
+    ap.add_argument("--link_voxels", default=None, help="work root that gets the three flat symlink trees")
     ap.add_argument("--link_release", default=None,
                     help="release root as the links should spell it (default: --release), for a release mounted "
                          "at different paths on different machines")
@@ -62,13 +66,14 @@ def main() -> None:
     print(f"[metadata] {len(uuids)} shapes: " + ", ".join(f"{s} {len(rows[s])}" for s in SPLITS))
 
     if args.link_voxels:
-        for kind, src in (("pbr_voxels_256", "pbr_voxels.vxz"), ("emission_voxels_256", "emission_voxels.vxz")):
+        for kind, src in (("pbr_voxels_256", "pbr_voxels.vxz"), ("emission_voxels_256", "emission_voxels.vxz"),
+                          ("dual_grid_256", "dual_grid.vxz")):
             d = os.path.join(args.link_voxels, kind)
             os.makedirs(d, exist_ok=True)
             n = 0
             for u in uuids:
                 dst = os.path.join(d, f"{u}.vxz")
-                if not os.path.islink(dst):
+                if not os.path.lexists(dst) and os.path.isfile(os.path.join(args.release, u, src)):
                     os.symlink(os.path.join(args.link_release or args.release, u, src), dst)
                     n += 1
             print(f"[metadata] {kind}: {n} new links under {d}")
