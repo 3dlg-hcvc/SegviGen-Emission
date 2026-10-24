@@ -15,7 +15,7 @@ shipped texture sampler (`pipeline.json` `tex_slat_sampler`: guidance 1.0, inter
 rescale_t 3.0), and the stock TRELLIS.2-4B texture decoder guided by the shape decoder's subdivisions
 at resolution 256. Output `<out_dir>/draw<k>/<sid>.npz`: `coords` int16 [N, 3] (the 256 grid), `pred`
 float16 [N, 3], the predicted emission mask (three equal channels, nominal [0, 1]), scored by
-LightgenBench's `evaluation/pointsampled/pipeline.py --pred_format voxels`. With `--ma_out_dir`, also
+LightGenBench's `evaluation/pointsampled/pipeline.py --pred_format voxels`. With `--ma_out_dir`, also
 `<ma_out_dir>/draw<k>/<sid>.npz` = mask x the asset's albedo (the PBR latent through the same decoder
 and subdivisions, clamped to [0, 1]), for MAE and PSNR.
 

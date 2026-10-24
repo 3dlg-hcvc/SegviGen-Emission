@@ -1,5 +1,5 @@
 #!/bin/bash
-# Download the LightgenBench release (Hugging Face 3dlg-hcvc/LightgenBench) and lay it out the way SegviGen-Emission's
+# Download the LightGenBench release (Hugging Face 3dlg-hcvc/LightgenBench) and lay it out the way SegviGen-Emission's
 # producers read it.
 #
 #   bash script/lightgenbench/prepare_lightgenbench.sh <download_dir> <data_root>

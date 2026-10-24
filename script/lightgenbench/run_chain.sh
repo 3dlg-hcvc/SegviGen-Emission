@@ -1,5 +1,5 @@
 #!/bin/bash
-# SegviGen-Emission on LightgenBench, one stage per call, in the order below:
+# SegviGen-Emission on LightGenBench, one stage per call, in the order below:
 #
 #   bash script/lightgenbench/run_chain.sh latents <data_root>                     # shape + PBR latents
 #   bash script/lightgenbench/run_chain.sh masks <data_root>                        # emission-mask latents (training only)
